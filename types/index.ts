@@ -427,6 +427,8 @@ export type MailMessage = {
 export type TrackerIssue = {
   id: string;
   number: number;
+  /** The real tracker's own reference (ClickUp id, Jira key). Shown instead of #number when present. */
+  key?: string;
   title: string;
   body: string;
   labels: string[];
@@ -436,6 +438,8 @@ export type TrackerIssue = {
   createdBy: 'human' | 'repeat';
   state: 'open' | 'closed';
   url?: string;
+  /** Which real tracker this came from, when it did not come from the replica. */
+  provider?: 'clickup' | 'jira' | 'ambiguous';
 };
 
 export type ChatMessage = {

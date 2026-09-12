@@ -394,7 +394,8 @@ makes the product look staged.
 ## Optional integrations
 
 Everything below is optional and off by default. Copy `.env.example` to `.env`
-and set `DEMO_MODE=false`.
+and set `DEMO_MODE=false`. [`docs/KEYS.md`](docs/KEYS.md) lists every key,
+where to get it, and what it unlocks.
 
 | Integration | Requires | Behaviour |
 |---|---|---|

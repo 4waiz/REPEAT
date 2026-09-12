@@ -1,4 +1,4 @@
-import type { ActionResult, IssueSeverity } from '@/types';
+import type { ActionResult, IssueSeverity, TrackerIssue } from '@/types';
 import { type CreateIssueInput, type IssueTrackerAdapter, fail, ok } from './types';
 
 /**
@@ -17,6 +17,8 @@ export const CLICKUP_API = 'https://api.clickup.com/api/v2';
 
 /** ClickUp priority ids: 1 urgent, 2 high, 3 normal, 4 low. */
 const PRIORITY: Record<IssueSeverity, number> = { critical: 1, high: 2, medium: 3, low: 4 };
+/** And back, from the priority *name* the list endpoint returns. */
+const SEVERITY_OF: Record<string, IssueSeverity> = { urgent: 'critical', high: 'high', normal: 'medium', low: 'low' };
 
 export type ClickUpMember = { id: number; username: string; email?: string };
 
@@ -43,7 +45,18 @@ export function clickUpConfig(env: NodeJS.ProcessEnv = process.env): ClickUpConf
   return { apiKey, listId, teamId: env.CLICKUP_TEAM_ID?.trim() || undefined, assignees };
 }
 
-type ClickUpTask = { id: string; custom_id?: string | null; name: string; url: string };
+type ClickUpTask = {
+  id: string;
+  custom_id?: string | null;
+  name: string;
+  url: string;
+  description?: string | null;
+  date_created?: string;
+  status?: { status?: string; type?: string };
+  priority?: { priority?: string } | null;
+  tags?: { name: string }[];
+  assignees?: { username?: string }[];
+};
 
 export class ClickUpIssueTrackerAdapter implements IssueTrackerAdapter {
   readonly name = 'clickup';
@@ -102,6 +115,33 @@ export class ClickUpIssueTrackerAdapter implements IssueTrackerAdapter {
       members.find((m) => m.username.toLowerCase().startsWith(key)) ??
       null
     );
+  }
+
+  /**
+   * The list as it is right now, newest first, in REPEAT's issue shape — so
+   * the tracker window can show the real board, not a replica of it.
+   */
+  async listTasks(limit = 30): Promise<TrackerIssue[]> {
+    const response = await this.call(
+      `/list/${this.config.listId}/task?archived=false&order_by=created&reverse=true&include_closed=true&page=0`,
+    );
+    if (!response.ok) throw new Error(`ClickUp refused the task list (${response.status})`);
+    const data = (await response.json()) as { tasks?: ClickUpTask[] };
+    return (data.tasks ?? []).slice(0, limit).map((t) => ({
+      id: t.id,
+      number: 0,
+      key: t.custom_id ?? t.id,
+      title: t.name,
+      body: t.description ?? '',
+      labels: (t.tags ?? []).map((x) => x.name),
+      priority: SEVERITY_OF[t.priority?.priority ?? ''] ?? 'medium',
+      assignee: t.assignees?.[0]?.username || undefined,
+      createdAt: t.date_created ? new Date(Number(t.date_created)).toISOString() : new Date(0).toISOString(),
+      createdBy: 'human',
+      state: t.status?.type === 'closed' || t.status?.type === 'done' ? 'closed' : 'open',
+      url: t.url,
+      provider: 'clickup',
+    }));
   }
 
   async createIssue(input: CreateIssueInput): Promise<ActionResult> {
