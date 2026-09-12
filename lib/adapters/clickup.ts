@@ -50,8 +50,11 @@ export class ClickUpIssueTrackerAdapter implements IssueTrackerAdapter {
   readonly live = true;
 
   private membersCache: ClickUpMember[] | null = null;
+  private readonly config: ClickUpConfig;
 
-  constructor(private readonly config: ClickUpConfig) {}
+  constructor(config: ClickUpConfig) {
+    this.config = config;
+  }
 
   private async call(path: string, init: RequestInit = {}): Promise<Response> {
     return fetch(`${CLICKUP_API}${path}`, {

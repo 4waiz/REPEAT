@@ -3,6 +3,11 @@ import { z } from 'zod';
 import type { ActionResult, PermissionClass } from '@/types';
 import { DEMO_MODE } from '@/lib/demo/config';
 import { ClickUpIssueTrackerAdapter, clickUpConfig } from '@/lib/adapters/clickup';
+import {
+  AmbiguousChatAdapter,
+  AmbiguousIssueTrackerAdapter,
+  ambiguousConfig,
+} from '@/lib/adapters/ambiguous';
 import { GitHubIssueTrackerAdapter, SlackMessagingAdapter } from '@/lib/adapters/github';
 import type { IssueTrackerAdapter, MessagingAdapter } from '@/lib/adapters/types';
 import { assertExecutable } from '@/lib/policy/policy';
@@ -17,11 +22,14 @@ import { assertExecutable } from '@/lib/policy/policy';
  * from the action on the server — the client's claim is not trusted — and
  * the same `assertExecutable` guard the executor uses is re-applied.
  *
- * Adapter binding, by environment:
- *   tracker    ClickUp (CLICKUP_API_KEY + CLICKUP_LIST_ID), else GitHub
- *              (GITHUB_TOKEN + GITHUB_REPO), else none
- *   messaging  Slack (SLACK_WEBHOOK_URL), else none — the browser then keeps
- *              the replica chat
+ * Adapter binding, by environment (TRACKER=clickup|ambiguous|github forces one):
+ *   tracker    ClickUp (CLICKUP_API_KEY + CLICKUP_LIST_ID), else an Ambiguous
+ *              workspace (AMBIGUOUS_API_KEY), else GitHub (GITHUB_TOKEN +
+ *              GITHUB_REPO), else the credential-free Ambiguous sandbox
+ *              (AMBIGUOUS_SANDBOX=true), else none
+ *   messaging  Slack (SLACK_WEBHOOK_URL), else an Ambiguous channel
+ *              (AMBIGUOUS_API_KEY + AMBIGUOUS_CHANNEL_ID), else none — the
+ *              browser then keeps the replica chat
  *
  * Returns 409 while Demo Mode is on: live execution is disabled by design.
  */
@@ -56,20 +64,63 @@ const PERMISSION: Record<z.infer<typeof BodySchema>['action'], PermissionClass> 
   'chat.notify_team': 'send_message',
 };
 
-function bindTracker(): { adapter: IssueTrackerAdapter; target: string } | null {
+type Bound<T> = { adapter: T; target: string };
+
+function bindTracker(): Bound<IssueTrackerAdapter> | null {
+  const forced = (process.env.TRACKER ?? '').trim().toLowerCase();
+
   const clickUp = clickUpConfig();
-  if (clickUp) {
-    return { adapter: new ClickUpIssueTrackerAdapter(clickUp), target: `ClickUp list ${clickUp.listId}` };
+  const ambiguous = ambiguousConfig();
+  const gitHubToken = process.env.GITHUB_TOKEN;
+  const gitHubRepo = process.env.GITHUB_REPO;
+
+  const candidates: { key: string; bind: () => Bound<IssueTrackerAdapter> | null }[] = [
+    {
+      key: 'clickup',
+      bind: () =>
+        clickUp ? { adapter: new ClickUpIssueTrackerAdapter(clickUp), target: `ClickUp list ${clickUp.listId}` } : null,
+    },
+    {
+      key: 'ambiguous',
+      bind: () =>
+        ambiguous?.mode === 'workspace'
+          ? { adapter: new AmbiguousIssueTrackerAdapter(ambiguous), target: 'Ambiguous · workspace' }
+          : null,
+    },
+    {
+      key: 'github',
+      bind: () =>
+        gitHubToken && gitHubRepo
+          ? { adapter: new GitHubIssueTrackerAdapter(gitHubToken, gitHubRepo), target: `GitHub ${gitHubRepo}` }
+          : null,
+    },
+    {
+      key: 'ambiguous',
+      bind: () =>
+        ambiguous?.mode === 'sandbox'
+          ? { adapter: new AmbiguousIssueTrackerAdapter(ambiguous), target: 'Ambiguous · sandbox (synthetic, one hour)' }
+          : null,
+    },
+  ];
+
+  const ordered = forced ? candidates.filter((c) => c.key === forced) : candidates;
+  for (const candidate of ordered) {
+    const bound = candidate.bind();
+    if (bound) return bound;
   }
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO;
-  if (token && repo) return { adapter: new GitHubIssueTrackerAdapter(token, repo), target: `GitHub ${repo}` };
   return null;
 }
 
-function bindMessaging(): { adapter: MessagingAdapter; target: string } | null {
+function bindMessaging(): Bound<MessagingAdapter> | null {
   const webhook = process.env.SLACK_WEBHOOK_URL;
   if (webhook) return { adapter: new SlackMessagingAdapter(webhook), target: 'Slack webhook' };
+  const ambiguous = ambiguousConfig();
+  if (ambiguous?.mode === 'workspace' && ambiguous.channelId) {
+    return {
+      adapter: new AmbiguousChatAdapter(ambiguous.base, ambiguous.apiKey, ambiguous.channelId),
+      target: `Ambiguous channel ${ambiguous.channelId}`,
+    };
+  }
   return null;
 }
 
@@ -146,7 +197,11 @@ export async function POST(request: Request) {
   switch (body.action) {
     case 'tracker.create_issue': {
       const tracker = bindTracker();
-      if (!tracker) return notConfigured('No issue tracker configured (CLICKUP_API_KEY + CLICKUP_LIST_ID, or GITHUB_TOKEN + GITHUB_REPO).');
+      if (!tracker) {
+        return notConfigured(
+          'No issue tracker configured (CLICKUP_API_KEY + CLICKUP_LIST_ID, AMBIGUOUS_API_KEY, GITHUB_TOKEN + GITHUB_REPO, or AMBIGUOUS_SANDBOX=true).',
+        );
+      }
       result = await tracker.adapter.createIssue({
         title: body.params.issueTitle,
         body: body.params.issueDescription,
