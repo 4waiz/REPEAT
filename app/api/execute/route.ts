@@ -1,31 +1,118 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import type { ActionResult, PermissionClass } from '@/types';
 import { DEMO_MODE } from '@/lib/demo/config';
+import { ClickUpIssueTrackerAdapter, clickUpConfig } from '@/lib/adapters/clickup';
 import { GitHubIssueTrackerAdapter, SlackMessagingAdapter } from '@/lib/adapters/github';
-import { PERMISSION_POLICY } from '@/lib/policy/policy';
+import type { IssueTrackerAdapter, MessagingAdapter } from '@/lib/adapters/types';
+import { assertExecutable } from '@/lib/policy/policy';
 
 /**
- * Live execution endpoint.
+ * Live execution endpoint — one consequential action per call.
  *
- * Only reached when Demo Mode is off and the relevant credentials exist. The
- * same policy gate that guards the in-browser executor is re-applied here:
- * the server does not trust the client's claim that a run was approved for a
- * permission class that does not require approval.
+ * The executor in the browser keeps its guarantees (per-action policy
+ * guard, stop on failure, resume-not-restart) and the credentials stay on
+ * the server: for each consequential step it sends the resolved action here,
+ * and this route binds the real adapter. The permission class is derived
+ * from the action on the server — the client's claim is not trusted — and
+ * the same `assertExecutable` guard the executor uses is re-applied.
+ *
+ * Adapter binding, by environment:
+ *   tracker    ClickUp (CLICKUP_API_KEY + CLICKUP_LIST_ID), else GitHub
+ *              (GITHUB_TOKEN + GITHUB_REPO), else none
+ *   messaging  Slack (SLACK_WEBHOOK_URL), else none — the browser then keeps
+ *              the replica chat
+ *
+ * Returns 409 while Demo Mode is on: live execution is disabled by design.
  */
 
 export const runtime = 'nodejs';
 
-const BodySchema = z.object({
-  approved: z.literal(true),
-  issue: z.object({
-    title: z.string().min(1),
-    body: z.string(),
-    labels: z.array(z.string()),
-    priority: z.enum(['low', 'medium', 'high', 'critical']),
-  }),
-  owner: z.string().min(1),
-  notify: z.object({ channel: z.string().min(1), body: z.string().min(1) }),
+const CreateIssueParams = z.object({
+  issueTitle: z.string().min(1),
+  issueDescription: z.string(),
+  labels: z.array(z.string()).default([]),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
 });
+
+const AssignParams = z.object({
+  owner: z.string().min(1),
+  issueId: z.string().optional(),
+  issueNumber: z.number().optional(),
+});
+
+const NotifyParams = z.object({ channel: z.string().min(1), teamMessage: z.string().min(1) });
+
+const BodySchema = z.discriminatedUnion('action', [
+  z.object({ approved: z.boolean(), action: z.literal('tracker.create_issue'), params: CreateIssueParams }),
+  z.object({ approved: z.boolean(), action: z.literal('tracker.assign_owner'), params: AssignParams }),
+  z.object({ approved: z.boolean(), action: z.literal('chat.notify_team'), params: NotifyParams }),
+]);
+
+/** The permission each live action carries — decided here, not by the caller. */
+const PERMISSION: Record<z.infer<typeof BodySchema>['action'], PermissionClass> = {
+  'tracker.create_issue': 'create_external',
+  'tracker.assign_owner': 'create_external',
+  'chat.notify_team': 'send_message',
+};
+
+function bindTracker(): { adapter: IssueTrackerAdapter; target: string } | null {
+  const clickUp = clickUpConfig();
+  if (clickUp) {
+    return { adapter: new ClickUpIssueTrackerAdapter(clickUp), target: `ClickUp list ${clickUp.listId}` };
+  }
+  const token = process.env.GITHUB_TOKEN;
+  const repo = process.env.GITHUB_REPO;
+  if (token && repo) return { adapter: new GitHubIssueTrackerAdapter(token, repo), target: `GitHub ${repo}` };
+  return null;
+}
+
+function bindMessaging(): { adapter: MessagingAdapter; target: string } | null {
+  const webhook = process.env.SLACK_WEBHOOK_URL;
+  if (webhook) return { adapter: new SlackMessagingAdapter(webhook), target: 'Slack webhook' };
+  return null;
+}
+
+/** Cached ClickUp list name, so the UI can say where tickets will land. */
+let listNameCache: { id: string; name: string } | null = null;
+
+async function describeTracker(): Promise<{ name: string; live: boolean; target: string } | null> {
+  const bound = bindTracker();
+  if (!bound) return null;
+  const clickUp = clickUpConfig();
+  if (clickUp && bound.adapter.name === 'clickup') {
+    if (listNameCache?.id !== clickUp.listId) {
+      try {
+        const response = await fetch(`https://api.clickup.com/api/v2/list/${clickUp.listId}`, {
+          headers: { authorization: clickUp.apiKey },
+          signal: AbortSignal.timeout(4000),
+        });
+        if (response.ok) {
+          const list = (await response.json()) as { name?: string };
+          if (list.name) listNameCache = { id: clickUp.listId, name: list.name };
+        }
+      } catch {
+        // Best effort; the id is still a truthful target.
+      }
+    }
+    const listName = listNameCache?.id === clickUp.listId ? listNameCache.name : null;
+    return { name: 'clickup', live: true, target: listName ? `ClickUp · ${listName}` : bound.target };
+  }
+  return { name: bound.adapter.name, live: true, target: bound.target };
+}
+
+/** What live execution would touch. The UI reads this once, in live mode. */
+export async function GET() {
+  if (DEMO_MODE) {
+    return NextResponse.json({ demoMode: true, tracker: null, messaging: null });
+  }
+  const messaging = bindMessaging();
+  return NextResponse.json({
+    demoMode: false,
+    tracker: await describeTracker(),
+    messaging: messaging ? { name: messaging.adapter.name, live: true, target: messaging.target } : null,
+  });
+}
 
 export async function POST(request: Request) {
   if (DEMO_MODE) {
@@ -39,53 +126,60 @@ export async function POST(request: Request) {
   try {
     body = BodySchema.parse(await request.json());
   } catch {
-    // An unapproved or malformed run never reaches an adapter.
-    return NextResponse.json({ error: 'Invalid or unapproved run' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   }
 
-  const token = process.env.GITHUB_TOKEN;
-  const repo = process.env.GITHUB_REPO;
-  const webhook = process.env.SLACK_WEBHOOK_URL;
-
-  if (!token || !repo) {
+  // The guard the executor runs per action, re-run here with the server's
+  // own idea of the permission class. An unapproved run never reaches an
+  // adapter, whatever the caller claims.
+  const permission = PERMISSION[body.action];
+  try {
+    assertExecutable({ approved: body.approved, permission });
+  } catch (error) {
     return NextResponse.json(
-      { error: 'GITHUB_TOKEN and GITHUB_REPO are required for live execution.' },
-      { status: 412 },
+      { error: error instanceof Error ? error.message : 'Blocked by policy' },
+      { status: 403 },
     );
   }
 
-  // Re-assert the policy server-side rather than trusting the caller.
-  for (const permission of ['create_external', 'send_message'] as const) {
-    if (PERMISSION_POLICY[permission].requiresApproval && body.approved !== true) {
-      return NextResponse.json({ error: 'Approval required' }, { status: 403 });
+  let result: ActionResult;
+  switch (body.action) {
+    case 'tracker.create_issue': {
+      const tracker = bindTracker();
+      if (!tracker) return notConfigured('No issue tracker configured (CLICKUP_API_KEY + CLICKUP_LIST_ID, or GITHUB_TOKEN + GITHUB_REPO).');
+      result = await tracker.adapter.createIssue({
+        title: body.params.issueTitle,
+        body: body.params.issueDescription,
+        labels: body.params.labels,
+        priority: body.params.severity,
+      });
+      break;
+    }
+    case 'tracker.assign_owner': {
+      const tracker = bindTracker();
+      if (!tracker) return notConfigured('No issue tracker configured.');
+      result = await tracker.adapter.assignIssue(
+        { number: body.params.issueNumber ?? 0, id: body.params.issueId },
+        body.params.owner,
+      );
+      break;
+    }
+    case 'chat.notify_team': {
+      const messaging = bindMessaging();
+      if (!messaging) return notConfigured('No messaging adapter configured (SLACK_WEBHOOK_URL).');
+      result = await messaging.adapter.postMessage({
+        channel: body.params.channel,
+        body: body.params.teamMessage,
+      });
+      break;
     }
   }
 
-  const tracker = new GitHubIssueTrackerAdapter(token, repo);
-  const results: Record<string, unknown> = {};
+  // A failed action is reported truthfully with a 2xx: the executor decides
+  // what a failure means for the run; transport errors are the 4xx/5xx ones.
+  return NextResponse.json(result);
+}
 
-  const created = await tracker.createIssue(body.issue);
-  results.createIssue = created;
-  if (!created.ok) {
-    // Stop at the first failure and report it truthfully.
-    return NextResponse.json({ ok: false, results }, { status: 502 });
-  }
-
-  const number = Number(created.data?.number);
-  const assigned = await tracker.assignIssue({ number }, body.owner);
-  results.assignIssue = assigned;
-  if (!assigned.ok) return NextResponse.json({ ok: false, results }, { status: 502 });
-
-  if (webhook) {
-    // Use the real issue number, not whatever the client predicted.
-    const messaging = new SlackMessagingAdapter(webhook);
-    results.notify = await messaging.postMessage({
-      channel: body.notify.channel,
-      body: body.notify.body.replace(/#\d+/, `#${number}`),
-    });
-  } else {
-    results.notify = { ok: false, skipped: true, reason: 'SLACK_WEBHOOK_URL not configured' };
-  }
-
-  return NextResponse.json({ ok: true, results });
+function notConfigured(message: string) {
+  return NextResponse.json({ error: message }, { status: 412 });
 }
