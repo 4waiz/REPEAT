@@ -9,6 +9,7 @@ import {
   ambiguousConfig,
 } from '@/lib/adapters/ambiguous';
 import { GitHubIssueTrackerAdapter, SlackMessagingAdapter } from '@/lib/adapters/github';
+import { JiraIssueTrackerAdapter, jiraConfig } from '@/lib/adapters/jira';
 import type { IssueTrackerAdapter, MessagingAdapter } from '@/lib/adapters/types';
 import { assertExecutable } from '@/lib/policy/policy';
 
@@ -22,11 +23,12 @@ import { assertExecutable } from '@/lib/policy/policy';
  * from the action on the server — the client's claim is not trusted — and
  * the same `assertExecutable` guard the executor uses is re-applied.
  *
- * Adapter binding, by environment (TRACKER=clickup|ambiguous|github forces one):
- *   tracker    ClickUp (CLICKUP_API_KEY + CLICKUP_LIST_ID), else an Ambiguous
- *              workspace (AMBIGUOUS_API_KEY), else GitHub (GITHUB_TOKEN +
- *              GITHUB_REPO), else the credential-free Ambiguous sandbox
- *              (AMBIGUOUS_SANDBOX=true), else none
+ * Adapter binding, by environment (TRACKER=clickup|jira|ambiguous|github forces one):
+ *   tracker    ClickUp (CLICKUP_API_KEY + CLICKUP_LIST_ID), else Jira
+ *              (JIRA_BASE_URL + JIRA_EMAIL + JIRA_API_TOKEN + JIRA_PROJECT_KEY),
+ *              else an Ambiguous workspace (AMBIGUOUS_API_KEY), else GitHub
+ *              (GITHUB_TOKEN + GITHUB_REPO), else the credential-free Ambiguous
+ *              sandbox (AMBIGUOUS_SANDBOX=true), else none
  *   messaging  Slack (SLACK_WEBHOOK_URL), else an Ambiguous channel
  *              (AMBIGUOUS_API_KEY + AMBIGUOUS_CHANNEL_ID), else none — the
  *              browser then keeps the replica chat
@@ -70,6 +72,7 @@ function bindTracker(): Bound<IssueTrackerAdapter> | null {
   const forced = (process.env.TRACKER ?? '').trim().toLowerCase();
 
   const clickUp = clickUpConfig();
+  const jira = jiraConfig();
   const ambiguous = ambiguousConfig();
   const gitHubToken = process.env.GITHUB_TOKEN;
   const gitHubRepo = process.env.GITHUB_REPO;
@@ -79,6 +82,11 @@ function bindTracker(): Bound<IssueTrackerAdapter> | null {
       key: 'clickup',
       bind: () =>
         clickUp ? { adapter: new ClickUpIssueTrackerAdapter(clickUp), target: `ClickUp list ${clickUp.listId}` } : null,
+    },
+    {
+      key: 'jira',
+      bind: () =>
+        jira ? { adapter: new JiraIssueTrackerAdapter(jira), target: `Jira · ${jira.projectKey}` } : null,
     },
     {
       key: 'ambiguous',
@@ -199,7 +207,7 @@ export async function POST(request: Request) {
       const tracker = bindTracker();
       if (!tracker) {
         return notConfigured(
-          'No issue tracker configured (CLICKUP_API_KEY + CLICKUP_LIST_ID, AMBIGUOUS_API_KEY, GITHUB_TOKEN + GITHUB_REPO, or AMBIGUOUS_SANDBOX=true).',
+          'No issue tracker configured (CLICKUP_API_KEY + CLICKUP_LIST_ID, JIRA_*, AMBIGUOUS_API_KEY, GITHUB_TOKEN + GITHUB_REPO, or AMBIGUOUS_SANDBOX=true).',
         );
       }
       result = await tracker.adapter.createIssue({

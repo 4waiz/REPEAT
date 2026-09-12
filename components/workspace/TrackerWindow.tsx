@@ -18,6 +18,10 @@ import { cn } from '@/lib/utils';
  */
 
 const LABEL_CHOICES = ['bug', 'authentication', 'performance', 'ui', 'data', 'frontend', 'backend'];
+
+function isRealUrl(url: string | undefined): url is string {
+  return Boolean(url && /^https?:\/\//.test(url) && !url.includes('tracker.local'));
+}
 const PRIORITIES: IssueSeverity[] = ['low', 'medium', 'high', 'critical'];
 
 const PRIORITY_TONE: Record<IssueSeverity, string> = {
@@ -27,12 +31,23 @@ const PRIORITY_TONE: Record<IssueSeverity, string> = {
   critical: 'border-rose-400/30 bg-rose-400/10 text-rose-300',
 };
 
+const PROVIDER_LABEL: Record<string, string> = { clickup: 'ClickUp', jira: 'Jira' };
+
 export function TrackerWindow() {
   const composer = useRepeat((s) => s.composer);
   const issues = useRepeat((s) => s.issues);
   const clipboard = useRepeat((s) => s.clipboard);
   const guideOn = useRepeat((s) => s.settings.guideOn);
   const next = useRepeat(selectNextAction);
+  const surfaces = useRepeat((s) => s.surfaces);
+  const trackerView = useRepeat((s) => s.trackerView);
+  const setTrackerView = useRepeat((s) => s.setTrackerView);
+  const liveTarget = useRepeat((s) => s.live?.tracker?.target ?? null);
+
+  // Live mode shows the real board; the replica project name is Demo Mode's.
+  const board = surfaces?.trackers.find((t) => t.provider === trackerView) ?? null;
+  const title = board ? board.target.replace(/^ClickUp list \d+$/, 'ClickUp') : liveTarget ?? TRACKER_PROJECT.label;
+  const subtitle = board ? `${PROVIDER_LABEL[board.provider] ?? board.provider} · live` : 'Issues';
 
   const openComposer = useRepeat((s) => s.openComposer);
   const paste = useRepeat((s) => s.pasteIntoComposer);
@@ -45,18 +60,48 @@ export function TrackerWindow() {
 
   return (
     <WindowFrame
-      title={TRACKER_PROJECT.label}
-      subtitle="Issues"
+      title={title}
+      subtitle={subtitle}
       icon={<GitPullRequestArrow />}
       accent="#8b7cff"
       observed
       className="min-w-0"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center justify-between border-b border-edge-faint px-3 py-2">
-          <span className="flex items-center gap-1.5 text-2xs uppercase tracking-[0.12em] text-mist-500">
-            <CircleDot className="h-3 w-3" />
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge-faint px-3 py-2">
+          <span className="flex min-w-0 items-center gap-1.5 text-2xs uppercase tracking-[0.12em] text-mist-500">
+            <CircleDot className="h-3 w-3 shrink-0" />
             {issues.filter((i) => i.state === 'open').length} open
+            {/* Two real boards: switch between them. One: link out to it. */}
+            {surfaces && surfaces.trackers.length > 1 ? (
+              <span className="ml-2 flex items-center gap-1 normal-case tracking-normal">
+                {surfaces.trackers.map((t) => (
+                  <button
+                    key={t.provider}
+                    onClick={() => setTrackerView(t.provider)}
+                    className={cn(
+                      'rounded border px-1.5 py-px text-3xs transition',
+                      t.provider === trackerView
+                        ? 'border-iris-400/40 bg-iris-400/15 text-iris-200'
+                        : 'border-edge-faint text-mist-500 hover:text-mist-200',
+                    )}
+                  >
+                    {PROVIDER_LABEL[t.provider] ?? t.provider}
+                  </button>
+                ))}
+              </span>
+            ) : null}
+            {board?.url ? (
+              <a
+                href={board.url}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="ml-1 inline-flex items-center gap-1 normal-case tracking-normal text-mist-500 hover:text-mist-200"
+                title="Open the real board"
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            ) : null}
           </span>
           {!composer.open ? (
             <GuideRing active={guideOn && next === 'tracker.open_composer'} radius="rounded-md">
@@ -248,7 +293,9 @@ export function TrackerWindow() {
                       </span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
-                      <span className="font-mono text-3xs text-mist-600">#{issue.number}</span>
+                      <span className="font-mono text-3xs text-mist-600">
+                        {issue.key ?? `#${issue.number}`}
+                      </span>
                       {issue.labels.map((l) => (
                         <span
                           key={l}
@@ -271,20 +318,22 @@ export function TrackerWindow() {
                         </span>
                       ) : null}
                     </div>
-                    {issue.createdBy === 'repeat' ? (
+                    {issue.createdBy === 'repeat' || isRealUrl(issue.url) ? (
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-400/10 px-1 py-px text-3xs uppercase tracking-[0.1em] text-cyan-300">
-                          by repeat
-                        </span>
+                        {issue.createdBy === 'repeat' ? (
+                          <span className="inline-flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-400/10 px-1 py-px text-3xs uppercase tracking-[0.1em] text-cyan-300">
+                            by repeat
+                          </span>
+                        ) : null}
                         {/* Only a live tracker has a real address; the replica's is local. */}
-                        {issue.url && /^https?:\/\//.test(issue.url) && !issue.url.includes('tracker.local') ? (
+                        {isRealUrl(issue.url) ? (
                           <a
                             href={issue.url}
                             target="_blank"
                             rel="noreferrer noopener"
                             className="inline-flex items-center gap-1 text-3xs text-teal-300 hover:text-teal-200"
                           >
-                            open in tracker
+                            open in {PROVIDER_LABEL[issue.provider ?? ''] ?? 'tracker'}
                             <ExternalLink className="h-2.5 w-2.5" />
                           </a>
                         ) : null}

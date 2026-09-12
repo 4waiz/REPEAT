@@ -442,6 +442,15 @@ export type TrackerIssue = {
   provider?: 'clickup' | 'jira' | 'ambiguous';
 };
 
+/** A real board, read through /api/surfaces/tracker in live mode. */
+export type TrackerSurface = {
+  provider: 'clickup' | 'jira';
+  target: string;
+  url?: string;
+  issues: TrackerIssue[];
+  error?: string;
+};
+
 export type ChatMessage = {
   id: string;
   channel: string;

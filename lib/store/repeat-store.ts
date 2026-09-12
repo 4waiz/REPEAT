@@ -15,6 +15,7 @@ import type {
   StagePhase,
   TimelineEntry,
   TrackerIssue,
+  TrackerSurface,
   WorkflowTrace,
 } from '@/types';
 import { inferenceFor, normalize } from '@/lib/events/normalizer';
@@ -155,6 +156,10 @@ export type RepeatState = {
    * no tracker is configured and the replica tracker stays in charge.
    */
   live: LiveTargets | null;
+  /** The real boards (ClickUp, Jira) read in live mode; null in Demo Mode. */
+  surfaces: { trackers: TrackerSurface[] } | null;
+  /** Which real board the tracker window shows when more than one is configured. */
+  trackerView: TrackerSurface['provider'] | null;
 
   // ---- lifecycle -------------------------------------------------------
   init: () => void;
@@ -190,6 +195,9 @@ export type RepeatState = {
 
   // ---- settings / demo -------------------------------------------------
   setSetting: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
+  /** Re-read the real boards (live mode). */
+  refreshSurfaces: () => Promise<void>;
+  setTrackerView: (provider: TrackerSurface['provider']) => void;
   setFailAt: (p: FailurePoint) => void;
   forgetPattern: (id: string) => void;
   setPatternStatus: (id: string, status: LearnedPattern['status']) => void;
@@ -275,6 +283,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
           app: 'tracker',
         });
       }
+      await get().refreshSurfaces();
     } catch {
       // Stay on the replica tracker; nothing to report.
     }
@@ -446,6 +455,8 @@ export const useRepeat = create<RepeatState>((set, get) => {
     banner: null,
     deliveredCount: 1,
     live: null,
+    surfaces: null,
+    trackerView: null,
 
     /* ------------------------------------------------------------------ */
     /* lifecycle                                                          */
@@ -1019,6 +1030,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
       }));
 
       const verification = verifyRun(finished);
+      if (!DEMO_MODE && tracker.live) void get().refreshSurfaces();
 
       if (finished.status === 'completed' && verification.ok) {
         set((s) => ({
@@ -1109,6 +1121,43 @@ export const useRepeat = create<RepeatState>((set, get) => {
 
     setSetting: (key, value) => {
       set((s) => ({ settings: { ...s.settings, [key]: value } }));
+    },
+
+    /**
+     * Live mode: the tracker window shows the real board REPEAT files into.
+     * Issues created by REPEAT in this session keep their "by repeat" mark;
+     * everything else is whatever the board says right now.
+     */
+    refreshSurfaces: async () => {
+      if (DEMO_MODE) return;
+      try {
+        const response = await fetch('/api/surfaces/tracker');
+        if (!response.ok) return;
+        const data = (await response.json()) as { trackers: TrackerSurface[] };
+        const trackers = data.trackers ?? [];
+        const boundName = get().live?.tracker?.name;
+        const view =
+          get().trackerView ??
+          (trackers.find((t) => t.provider === boundName)?.provider ?? trackers[0]?.provider ?? null);
+        const board = trackers.find((t) => t.provider === view);
+        set((s) => {
+          const mine = new Map(s.issues.filter((i) => i.createdBy === 'repeat').map((i) => [i.id, i]));
+          const issues = board
+            ? board.issues.map((i) => {
+                const created = mine.get(i.id);
+                return created ? { ...i, number: created.number, createdBy: 'repeat' as const } : i;
+              })
+            : s.issues;
+          return { surfaces: { trackers }, trackerView: view, issues: board ? issues : s.issues };
+        });
+      } catch {
+        // The replica list stays; nothing to report.
+      }
+    },
+
+    setTrackerView: (provider) => {
+      set({ trackerView: provider });
+      void get().refreshSurfaces();
     },
 
     setFailAt: (p) => set({ failAt: p }),
