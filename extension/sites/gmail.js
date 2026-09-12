@@ -86,9 +86,11 @@
 
   api.registerSite({
     name: 'gmail',
-    // Clicks in Gmail are navigation, not workflow verbs; the copy listener
-    // in content.js already records "captured content for reuse".
-    handleClick: () => null,
+    // Clicks in Gmail are navigation, not workflow verbs — the opened
+    // message is detected below, and the copy listener in content.js already
+    // records "captured content for reuse". Refusing them keeps the generic
+    // "any click in a mail app is a read" rule from firing on every button.
+    handleClick: () => false,
     watch() {
       new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
       window.addEventListener('hashchange', schedule);

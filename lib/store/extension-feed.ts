@@ -100,11 +100,19 @@ export function applyObservedEvent(store: Store, event: ObservedEvent): string |
   if (['ghost_run', 'executing'].includes(state.phase)) return null;
 
   if (action === 'mail.read_message') {
+    // Only a real "message opened" counts: it names the message. The generic
+    // click rule in mail apps sends reads with no subject — those are noise.
+    if (!str(data, 'subject') && !str(data, 'messageId') && !str(data, 'threadId')) return null;
+
+    const current = state.activeTrace;
+    const filed = current?.events.some((e) => e.action === 'tracker.create_issue');
+    const worked = current?.events.some((e) => e.action.startsWith('tracker.') || e.action.startsWith('chat.'));
     // Opening another report after a ticket was filed means the previous
-    // pass is over — a human rarely announces that explicitly.
-    if (state.activeTrace?.events.some((e) => e.action === 'tracker.create_issue')) {
-      state.completeTrace();
-    }
+    // pass is over — a human rarely announces that explicitly. Opening one
+    // when nothing was filed yet means the earlier read was just reading.
+    if (filed) state.completeTrace();
+    else if (current && !worked) state.abandonTrace();
+
     let message = matchInboxMessage(store.getState(), data);
     if (!message) {
       // Not in the connected inbox (or no inbox connected): keep what the

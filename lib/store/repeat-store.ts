@@ -192,6 +192,8 @@ export type RepeatState = {
 
   // ---- learning --------------------------------------------------------
   completeTrace: () => void;
+  /** Drop the active observation without recording it (nothing workflow-like happened). */
+  abandonTrace: () => void;
   approvePattern: () => void;
   showPatternFirst: () => void;
 
@@ -832,6 +834,17 @@ export const useRepeat = create<RepeatState>((set, get) => {
     /* ------------------------------------------------------------------ */
     /* learning                                                           */
     /* ------------------------------------------------------------------ */
+
+    abandonTrace: () => {
+      const state = get();
+      if (!state.activeTrace) return;
+      set({
+        activeTrace: null,
+        confidence: 0,
+        phase: state.patterns.length ? state.phase : 'idle',
+        orb: state.patterns.length ? state.orb : 'idle',
+      });
+    },
 
     completeTrace: () => {
       const state = get();
