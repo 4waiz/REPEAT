@@ -31,6 +31,12 @@ export function gmailConfig(env: NodeJS.ProcessEnv = process.env): GmailConfig |
 
 const BODY_LIMIT = 4000;
 
+/** X-GM-MSGID arrives as a decimal string; Gmail's other surfaces use its hex form. */
+function gmailHexId(emailId: string | undefined): string | undefined {
+  if (!emailId) return undefined;
+  return /^\d+$/.test(emailId) ? BigInt(emailId).toString(16) : emailId;
+}
+
 /** Plain text for the report: the text part, else the HTML with tags removed. */
 function bodyText(text: string | undefined, html: string | false | undefined): string {
   const fromText = (text ?? '').trim();
@@ -77,12 +83,15 @@ export async function fetchRecentMail(
     const wanted = uids.slice(-limit);
     if (wanted.length === 0) return [];
 
-    for await (const item of client.fetch(wanted, { uid: true, flags: true, source: true }, { uid: true })) {
+    for await (const item of client.fetch(wanted, { uid: true, flags: true, source: true, threadId: true }, { uid: true })) {
       const parsed = await simpleParser(item.source as Buffer);
       const sender = parsed.from?.value?.[0];
       const fromEmail = sender?.address ?? config.address;
       messages.push({
-        id: `gmail_${item.uid}`,
+        // One identity everywhere when the server provides it: Gmail's
+        // message id in hex, the same value the REST API returns and the
+        // web app puts in data-legacy-message-id. Otherwise the IMAP uid.
+        id: `gmail_${gmailHexId(item.emailId) ?? item.uid}`,
         from: sender?.name?.trim() || fromEmail.split('@')[0],
         fromEmail,
         subject: (parsed.subject ?? '(no subject)').trim(),

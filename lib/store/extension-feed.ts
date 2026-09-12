@@ -46,6 +46,9 @@ export const WORKFLOW_COMPLETE = 'workflow.complete';
 
 const POLL_MS = 2000;
 const DEDUP_MS = 1500;
+/** A Create click and the tracker's own confirmation are one action. */
+const CREATE_CONFIRM_MS = 30_000;
+let lastCreateAt = 0;
 /** A ticket was filed and nothing else happened: the observation is over. */
 const IDLE_AFTER_CREATE_MS = 60_000;
 
@@ -126,9 +129,22 @@ export function applyObservedEvent(store: Store, event: ObservedEvent): string |
   if (!state.activeTrace) return null;
 
   const payload: Record<string, unknown> = {};
-  for (const key of ['issueTitle', 'issueDescription', 'labels', 'severity', 'owner', 'area', 'issueNumber', 'channel', 'teamMessage']) {
+  for (const key of [
+    'issueTitle', 'issueDescription', 'labels', 'severity', 'owner', 'area',
+    'issueNumber', 'issueKey', 'taskId', 'url', 'channel', 'teamMessage',
+  ]) {
     if (data[key] !== undefined) payload[key] = data[key];
   }
+
+  if (action === 'tracker.create_issue') {
+    const now = Date.parse(event.timestamp) || Date.now();
+    const confirmation = now - lastCreateAt < CREATE_CONFIRM_MS;
+    lastCreateAt = now;
+    // The real board has the truth about what was just filed.
+    void store.getState().refreshSurfaces();
+    if (confirmation) return `Ticket confirmed by the tracker${payload.issueKey ? ` (${payload.issueKey})` : ''}`;
+  }
+
   state.observe(action, payload);
 
   // Telling the team is the last step of the observed workflow.

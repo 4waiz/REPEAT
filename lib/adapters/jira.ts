@@ -188,11 +188,8 @@ export class JiraIssueTrackerAdapter implements IssueTrackerAdapter {
       maxResults: limit,
       fields: ['summary', 'created', 'labels', 'priority', 'assignee', 'status'],
     });
-    // The 2025 search endpoint first; older sites still answer on /search.
-    let response = await this.call('/rest/api/3/search/jql', { method: 'POST', body });
-    if (response.status === 404 || response.status === 410) {
-      response = await this.call('/rest/api/3/search', { method: 'POST', body });
-    }
+    // /rest/api/3/search is gone (410 since 2025); search/jql is the endpoint.
+    const response = await this.call('/rest/api/3/search/jql', { method: 'POST', body });
     if (!response.ok) throw new Error(`Jira refused the search (${response.status})`);
     const data = (await response.json()) as { issues?: JiraIssue[] };
     return (data.issues ?? []).map((issue) => this.toTrackerIssue(issue));
