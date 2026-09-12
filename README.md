@@ -160,7 +160,8 @@ flowchart TD
     C --> D[Pattern Detector<br/><i>sequence / app / intent similarity</i>]
     D --> E[Pattern Compiler<br/><i>provenance + functional dependency</i>]
     E --> F[Workflow Agent]
-    F --> G[Ghost Runner<br/><i>resolve variables, detect adaptations</i>]
+    F --> U[Understanding<br/><i>rules · model via OpenRouter · context via Exa</i>]
+    U --> G[Ghost Runner<br/><i>resolve variables, detect adaptations</i>]
     G --> H{Policy / Approval Layer}
     H -- refused --> G
     H -- approved --> I[Executor<br/><i>per-action guard, resume-not-restart</i>]
@@ -181,7 +182,10 @@ Each stage is one module, and the boundaries are real:
 | Similarity scoring | [`lib/patterns/similarity.ts`](lib/patterns/similarity.ts) |
 | Detector | [`lib/patterns/detector.ts`](lib/patterns/detector.ts) |
 | Compiler / generalization | [`lib/patterns/compiler.ts`](lib/patterns/compiler.ts) |
-| Understanding (rules + LLM) | [`lib/agents/understanding.ts`](lib/agents/understanding.ts) |
+| Understanding (rules + model contract) | [`lib/agents/understanding.ts`](lib/agents/understanding.ts) |
+| Live understanding (model ‖ research, in parallel) | [`lib/agents/understanding-live.ts`](lib/agents/understanding-live.ts) |
+| OpenRouter client | [`lib/llm/openrouter.ts`](lib/llm/openrouter.ts) |
+| Exa research client | [`lib/research/exa.ts`](lib/research/exa.ts) |
 | Ghost Runner | [`lib/agents/ghost-runner.ts`](lib/agents/ghost-runner.ts) |
 | Policy | [`lib/policy/policy.ts`](lib/policy/policy.ts) |
 | Executor + Verifier | [`lib/agents/executor.ts`](lib/agents/executor.ts) |
@@ -312,7 +316,8 @@ Routing rules: `frontend → Noor`, `backend → Umar`, `ai-data → Awaiz`,
 ## Technology
 
 Next.js 15 · React 19 · TypeScript (strict) · Tailwind CSS · Framer Motion ·
-React Flow · Zustand · Zod · Lucide.
+React Flow · Zustand · Zod · Lucide. Live mode adds **OpenRouter** (model
+understanding) and **Exa** (related-context research), both optional.
 
 Two deliberate choices worth noting:
 
@@ -337,6 +342,7 @@ configuration at all, REPEAT runs fully offline.
 |---|---|
 | `npm run dev` | development server |
 | `npm run verify` | headless engine self-test (58 assertions) |
+| `npm run verify:live` | live integration self-test against OpenRouter and Exa (needs `.env`) |
 | `npm run typecheck` | TypeScript, no emit |
 | `npm run lint` | ESLint |
 | `npm run check` | all three |
@@ -382,19 +388,33 @@ makes the product look staged.
 
 ## Optional integrations
 
-Everything below is optional and off by default. Copy `.env.example` to `.env`.
+Everything below is optional and off by default. Copy `.env.example` to `.env`
+and set `DEMO_MODE=false`.
 
 | Integration | Requires | Behaviour |
 |---|---|---|
-| Claude understanding | `ANTHROPIC_API_KEY`, `DEMO_MODE=false` | Zod-validated; evidence must be quotable from the source or the response is refused; 6s timeout; falls back to the deterministic classifier on any failure |
+| Model understanding via **OpenRouter** | `OPENROUTER_API_KEY` (+ `OPENROUTER_MODEL`, default `openai/gpt-4.1-mini`) | When a learned trigger fires, REPEAT reads the new report with the model. Zod-validated; every cited piece of evidence must be a literal quote from the report or the whole answer is refused; the model may answer `unresolved`, which routes to human review; 8s timeout; falls back to the deterministic classifier on any failure |
+| Related context via **Exa** | `EXA_API_KEY` | In parallel with the model, REPEAT searches for public pages related to the symptom (docs, similar issues, status posts) and attaches up to three to the Ghost Run and the ticket body. Only the symptom phrase is sent — never the sender, their address or the message body; 6s timeout; a failure attaches nothing |
 | GitHub issues | `GITHUB_TOKEN`, `GITHUB_REPO` | real issues via `POST /api/execute` |
 | Slack | `SLACK_WEBHOOK_URL` | real messages |
 
-The agent, planner and executor are unchanged in either mode — only the adapter
-binding differs. `/api/execute` re-asserts the approval policy server-side rather
-than trusting the client, and returns `409` while Demo Mode is on.
+The two live passes run concurrently on the server (`POST /api/understand`)
+while the "Trigger detected" banner is up, and the run is re-planned from the
+model's understanding — through the same planner, policy and routing rules —
+before the Ghost Run opens. The Ghost Run then names the model that read the
+report and lists the references it found; the timeline records exactly what
+was sent to Exa. `POST /api/research` exposes the Exa step on its own.
 
-There is no path where a model failure reaches the UI as an error.
+The agent, planner and executor are unchanged in either mode — only the
+understanding source and the adapter binding differ. `/api/execute` re-asserts
+the approval policy server-side rather than trusting the client, and returns
+`409` while Demo Mode is on.
+
+There is no path where a model or search failure reaches the UI as an error.
+`npm run verify:live` proves it: it reads the four fixtures through the real
+services, asserts the classifications, checks that no evidence was invented and
+no identity left the machine, and confirms that a bad key degrades to the
+deterministic answer byte-for-byte.
 
 ---
 
@@ -432,6 +452,11 @@ metadata, and the structured fields you produced.
 
 REPEAT ignores: credential and payment fields, coordinates and keystrokes,
 excluded applications, and everything while paused.
+
+In live mode, REPEAT sends: the report text to the model via OpenRouter (it has
+to read it), and the symptom phrase — subject line plus quoted error, with
+names and addresses stripped — to Exa. The customer's identity and the message
+body never go to the search API, and the exact query is shown in the timeline.
 
 Controls: pause observation, exclude an app, forget a workflow, delete history.
 Excluding an app makes the observer drop its events entirely — they are never

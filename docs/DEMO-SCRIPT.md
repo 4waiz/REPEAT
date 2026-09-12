@@ -127,3 +127,11 @@ Two seconds on the Memory Map, then:
 | Judge asks "is it hardcoded?" | Show me first → the amber "Not memorized" box; or `npm run verify` |
 
 Demo Mode is on by default: no network, no keys, no external calls.
+
+If you want the live version for the judges — the model reading the third bug
+via OpenRouter and Exa attaching related context — set `DEMO_MODE=false` plus
+the two keys in `.env`, run `npm run verify:live` first, and keep the demo
+console's "demo mode" badge in view: it reads "live adapters" when live. The
+only visible differences are the "Understood by" row, the "Related context"
+list in the Ghost Run, and two extra timeline entries. Everything else is the
+same engine.

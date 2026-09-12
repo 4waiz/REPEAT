@@ -89,13 +89,28 @@ shows evidence, structured interpretation, permissions, risk and expected
 result — never model reasoning. A 58-assertion headless self-test (`npm run
 verify`) exercises the whole pipeline in about a second.
 
+**Live mode: OpenRouter + Exa.** With `DEMO_MODE=false`, the moment a learned
+trigger fires REPEAT does its own reading of the new report through two
+concurrent passes: a model via **OpenRouter** (default `openai/gpt-4.1-mini`,
+any model id works) returns the structured interpretation, and **Exa** searches
+for related public context — docs, similar issues, status posts — that is
+attached to the Ghost Run and the ticket body. The run is then re-planned
+from the model's understanding through the same planner, policy and routing
+rules, so the Umar→Noor reroute is still a rule, not a memory. The model path
+is Zod-validated, every cited piece of evidence must be a literal quote from
+the report or the whole answer is refused, the model may answer `unresolved`
+(which routes to human review), and it times out at 8s. The research step
+sends only the symptom phrase — never the sender, their address or the message
+body — and the exact query is shown in the timeline. `npm run verify:live`
+proves all of this against the real services, including that a bad key
+degrades byte-for-byte to the deterministic answer.
+
 **Reliability.** Demo Mode is the default: zero network calls, zero API keys,
 deterministic IDs and classification, system fonts and synthesised WebAudio
 instead of loaded assets. The demo renders identically with the Wi-Fi off.
-Claude, GitHub and Slack adapters are wired in behind the same interfaces for
-live use; the model path is Zod-validated, requires its cited evidence to be
-quotable from the source text, times out at 6s, and falls back to the
-deterministic classifier — so a model failure can never reach the UI as an error.
+GitHub and Slack adapters are wired in behind the same interfaces for live
+execution. There is no path where a model or search failure reaches the UI as
+an error.
 
 Also included: a Manifest V3 Chrome extension that is the real version of the
 observation layer (never touches password or payment fields, records no
@@ -108,24 +123,28 @@ because a browser is not a trusted source.
 
 ## 3. Products & Tools Used
 
-**ACTION NEEDED — read this before ticking boxes.**
+Tick these — each one is verifiable in the repo:
 
-We did not use OpenAI, CopilotKit, OpenRouter, Exa, Trigger.dev, Auth0,
-Mozilla.ai or Ambiguous AI. Do not tick them. Judges can check the repo, and a
-false claim costs more than a missing tick.
-
+- **OpenRouter** — the live understanding step (`lib/llm/openrouter.ts`,
+  `lib/agents/understanding-live.ts`, `POST /api/understand`) reads every new
+  report through OpenRouter's chat completions API with model routing and
+  fallbacks. Judges can run `npm run verify:live`.
+- **Exa** — the research step (`lib/research/exa.ts`, `POST /api/research`)
+  searches Exa for related public context and attaches it to the Ghost Run and
+  the ticket body. Same self-test.
+- **OpenAI** — the default OpenRouter model is `openai/gpt-4.1-mini`, so in
+  live mode an OpenAI model is what reads the report. (If you also used Codex
+  while building, that is a second honest reason.)
 - **AI Tinkerers** — tick if you count the event/platform as helpful (your call).
+
+Do **not** tick CopilotKit, Trigger.dev, Auth0, Mozilla.ai or Ambiguous AI —
+none of them are in the repo, and a false claim costs more than a missing tick.
+
 - **Other Products** — paste:
 
 ```
-Anthropic Claude (optional Zod-validated understanding path in /api/understand; the judged demo runs the deterministic classifier so it works fully offline), Claude Code (build tooling), Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, React Flow (@xyflow/react), Zustand, Zod, Lucide, Chrome Extensions Manifest V3, GitHub REST API + Slack webhooks (optional live adapters)
+OpenRouter (live model understanding via chat completions with model routing; default openai/gpt-4.1-mini, fallback anthropic/claude-haiku-4.5), Exa (related-context research attached to the Ghost Run and ticket), Claude Code (build tooling), Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, React Flow (@xyflow/react), Zustand, Zod, Lucide, Chrome Extensions Manifest V3, GitHub REST API + Slack webhooks (optional live adapters). The judged demo also runs fully offline in Demo Mode with a deterministic classifier.
 ```
-
-> **Worth 15 minutes if you want a sponsor tick honestly:** the LLM path is
-> already isolated in one file (`app/api/understand/route.ts`) behind a Zod
-> schema with a deterministic fallback. Pointing it at **OpenRouter** is a
-> base-URL, header and model-name change. That would make an OpenRouter tick
-> truthful without touching the demo path. Say the word and I'll do it.
 
 ---
 
@@ -153,12 +172,12 @@ field closely and inaccurate credit is worse than terse credit.
 
 **Awaiz Ahmed (Lead)**
 ```
-Led the project and owned the AI/data layer: the semantic event taxonomy, the deterministic understanding engine (weighted signal classifier for engineering area, category and severity with evidence extraction), the pattern detector's similarity scoring, and the pattern compiler — including the provenance-and-functional-dependency rule that stops REPEAT memorising a value it can derive. Also set the scope decision to build one flawless end-to-end sequence rather than several shallow ones, and wired the optional Anthropic Claude understanding path with Zod validation and deterministic fallback.
+Led the project and owned the AI/data layer: the semantic event taxonomy, the deterministic understanding engine (weighted signal classifier for engineering area, category and severity with evidence extraction), the pattern detector's similarity scoring, and the pattern compiler — including the provenance-and-functional-dependency rule that stops REPEAT memorising a value it can derive. Also set the scope decision to build one flawless end-to-end sequence rather than several shallow ones, and wired the live understanding path — a model via OpenRouter plus related-context research via Exa, run concurrently — with Zod validation, literal-evidence checking and deterministic fallback.
 ```
 
 **Mohammad Umar (Member)**
 ```
-Backend and engine internals: the executor and verifier (per-action policy guard, resume-not-restart on retry, downstream issue-number correction), the policy/approval layer and permission classes, the adapter interfaces with in-memory and live GitHub/Slack implementations, and the Next.js API routes (/api/understand, /api/execute, /api/observe).
+Backend and engine internals: the executor and verifier (per-action policy guard, resume-not-restart on retry, downstream issue-number correction), the policy/approval layer and permission classes, the adapter interfaces with in-memory and live GitHub/Slack implementations, and the Next.js API routes (/api/understand, /api/research, /api/execute, /api/observe), including the OpenRouter and Exa clients with per-provider timeouts.
 ```
 
 **Noor AlHamoud (Member)**
@@ -220,6 +239,8 @@ The part I like: both training bugs went to @umar. Owner never varied. REPEAT st
 
 No chat window. Your behaviour is the prompt.
 
+Live mode reads the report through @openrouter and pulls related context from @exaailabs — and if either is down, it degrades to the offline classifier instead of an error.
+
 Built at @AITinkerers #AgentsEverywhere
 
 @OpenAI @CopilotKit @openrouter @exaailabs @auth0 @ambiguousio @triggerdotdev @mozillaAI
@@ -244,7 +265,7 @@ The hardest part was making sure it wasn't a macro. Both bugs we trained on were
 
 Agents shouldn't live in a separate chat window. They should live where the work is.
 
-Built with Next.js, React, TypeScript, Tailwind, Framer Motion, React Flow, Zustand and Zod. Runs fully offline with no API keys. 58 automated assertions guard the behaviour.
+Built with Next.js, React, TypeScript, Tailwind, Framer Motion, React Flow, Zustand and Zod. Live mode reads each report with a model through OpenRouter and attaches related context found by Exa; Demo Mode runs fully offline with no API keys. 58 offline assertions plus a live integration self-test guard the behaviour.
 
 Code: https://github.com/4waiz/REPEAT
 
@@ -253,5 +274,6 @@ Code: https://github.com/4waiz/REPEAT
 AI Tinkerers, OpenAI, CopilotKit, OpenRouter, Exa, Auth0, Ambiguous AI, Trigger.dev, Mozilla.ai, Google Cloud
 ```
 
-> Both posts tag the sponsor list because the form requires it. Neither claims
-> we used those tools — keep it that way.
+> Both posts tag the sponsor list because the form requires it. OpenRouter
+> and Exa are genuinely used (live mode); the others are tags only — keep it
+> that way.
