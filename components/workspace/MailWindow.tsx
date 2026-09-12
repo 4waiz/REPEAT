@@ -24,6 +24,7 @@ export function MailWindow() {
   const next = useRepeat(selectNextAction);
 
   const mailSurface = useRepeat((s) => s.mailSurface);
+  const mailAuthUrl = useRepeat((s) => s.mailAuthUrl);
 
   const selected = inbox.find((m) => m.id === selectedId) ?? null;
   const unread = inbox.filter((m) => !m.read).length;
@@ -46,7 +47,15 @@ export function MailWindow() {
               <Inbox className="h-3 w-3" />
               Inbox
             </span>
-            {unread > 0 ? (
+            {mailAuthUrl && !mailSurface ? (
+              <a
+                href={mailAuthUrl}
+                className="inline-flex h-6 items-center gap-1 rounded-md bg-cyan-400/15 px-2 text-2xs font-medium uppercase tracking-[0.1em] text-cyan-300 transition hover:bg-cyan-400/25"
+                title="Authorise read-only access to your Gmail inbox"
+              >
+                Connect Gmail
+              </a>
+            ) : unread > 0 ? (
               <span className="rounded bg-cyan-400/15 px-1.5 text-2xs font-medium text-cyan-300">
                 {unread}
               </span>

@@ -165,6 +165,8 @@ export type RepeatState = {
   surfaces: { trackers: TrackerSurface[] } | null;
   /** The connected inbox in live mode; null when the replica inbox is in use. */
   mailSurface: { provider: 'gmail'; address: string } | null;
+  /** Gmail is configured with OAuth but not authorised yet: show Connect. */
+  mailAuthUrl: string | null;
   /** Which real board the tracker window shows when more than one is configured. */
   trackerView: TrackerSurface['provider'] | null;
 
@@ -290,9 +292,16 @@ export const useRepeat = create<RepeatState>((set, get) => {
       const data = (await response.json()) as {
         provider: 'gmail' | null;
         address: string | null;
+        needsAuth?: boolean;
+        authUrl?: string;
         messages: MailMessage[];
       };
+      if (data.needsAuth && data.authUrl) {
+        if (!get().mailAuthUrl) set({ mailAuthUrl: data.authUrl });
+        return;
+      }
       if (!data.provider || !data.address) return;
+      if (get().mailAuthUrl) set({ mailAuthUrl: null });
 
       const state = get();
       if (first || !state.mailSurface) {
@@ -521,6 +530,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
     live: null,
     surfaces: null,
     mailSurface: null,
+    mailAuthUrl: null,
     trackerView: null,
 
     /* ------------------------------------------------------------------ */

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import type { MailMessage } from '@/types';
 import { DEMO_MODE } from '@/lib/demo/config';
 import { fetchRecentMail, gmailConfig } from '@/lib/mail/gmail';
+import { fetchRecentMailOAuth, gmailOAuthConfig, isConnected } from '@/lib/mail/gmail-oauth';
 
 /**
  * The real inbox, read-only.
@@ -9,42 +10,54 @@ import { fetchRecentMail, gmailConfig } from '@/lib/mail/gmail';
  * In live mode the Mail window shows the connected Gmail account instead of
  * the replica inbox, and a new message there is what fires the trigger. The
  * workspace polls this every ~20 s; the result is cached briefly so a page
- * with several tabs cannot open an IMAP session per second.
+ * with several tabs cannot hit Gmail once a second.
+ *
+ * Two ways in, same output: an app password over IMAP, or an OAuth client
+ * over the Gmail REST API (needsAuth=true until the user has clicked
+ * Connect Gmail once).
  */
 
 export const runtime = 'nodejs';
 
 const CACHE_MS = 10_000;
 
-let cache: { at: number; messages: MailMessage[] } | null = null;
-let inflight: Promise<MailMessage[]> | null = null;
+let cache: { at: number; address: string | undefined; messages: MailMessage[] } | null = null;
+let inflight: Promise<{ address: string | undefined; messages: MailMessage[] }> | null = null;
 
 export async function GET() {
   if (DEMO_MODE) {
     return NextResponse.json({ error: 'Demo Mode is on. The real inbox is not read.' }, { status: 409 });
   }
-  const config = gmailConfig();
-  if (!config) {
+
+  const imap = gmailConfig();
+  const oauth = gmailOAuthConfig();
+  if (!imap && !oauth) {
     return NextResponse.json({ provider: null, address: null, messages: [] });
+  }
+  if (!imap && oauth && !isConnected()) {
+    return NextResponse.json({ provider: 'gmail', address: null, needsAuth: true, authUrl: '/api/mail/auth', messages: [] });
   }
 
   try {
-    let messages: MailMessage[];
+    let result: { address: string | undefined; messages: MailMessage[] };
     if (cache && Date.now() - cache.at < CACHE_MS) {
-      messages = cache.messages;
+      result = cache;
     } else {
-      inflight ??= fetchRecentMail(config).finally(() => {
+      inflight ??= (imap
+        ? fetchRecentMail(imap).then((messages) => ({ address: imap.address, messages }))
+        : fetchRecentMailOAuth(oauth!)
+      ).finally(() => {
         inflight = null;
       });
-      messages = await inflight;
-      cache = { at: Date.now(), messages };
+      result = await inflight;
+      cache = { at: Date.now(), ...result };
     }
-    return NextResponse.json({ provider: 'gmail', address: config.address, messages });
+    return NextResponse.json({ provider: 'gmail', address: result.address ?? null, messages: result.messages });
   } catch (error) {
     return NextResponse.json(
       {
         provider: 'gmail',
-        address: config.address,
+        address: cache?.address ?? null,
         messages: cache?.messages ?? [],
         error: error instanceof Error ? error.message : 'Gmail unreachable',
       },
