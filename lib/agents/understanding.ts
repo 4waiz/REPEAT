@@ -16,10 +16,10 @@ import { clamp, unique } from '@/lib/utils';
  *   1. deterministic  — a weighted keyword classifier that runs locally, needs
  *                       no network, and produces the same answer every time.
  *                       This is what Demo Mode uses.
- *   2. llm            — Claude, Zod-validated, used only when explicitly
- *                       enabled. Any validation failure silently falls back
- *                       to path 1, so a bad model response cannot break a
- *                       live demo.
+ *   2. llm            — a model reached through OpenRouter, Zod-validated,
+ *                       used only when explicitly enabled. Any validation
+ *                       failure silently falls back to path 1, so a bad model
+ *                       response cannot break a live demo.
  *
  * Only the *structured result* is ever surfaced in the UI, alongside the
  * literal phrases that justified it. No reasoning traces are shown.
@@ -40,12 +40,19 @@ export const CATEGORIES = [
 ] as const;
 export const SEVERITIES = ['low', 'medium', 'high', 'critical'] as const;
 
+/**
+ * The model may also answer `unresolved`. That is not a failure mode, it is
+ * the honest answer to a report with no symptom in it — and it is what keeps
+ * the "ask instead of guess" path reachable when a model is doing the reading.
+ */
+export const LLM_AREAS = [...AREAS, 'unresolved'] as const;
+
 export const UnderstandingSchema = z.object({
   customerName: z.string().min(1).max(120),
   issueTitle: z.string().min(4).max(140),
   issueDescription: z.string().min(10).max(2000),
   category: z.enum(CATEGORIES),
-  area: z.enum(AREAS),
+  area: z.enum(LLM_AREAS),
   severity: z.enum(SEVERITIES),
   labels: z.array(z.string().min(1).max(40)).min(1).max(5),
   evidence: z.array(z.string().min(2).max(200)).min(1).max(6),
@@ -327,15 +334,21 @@ Return ONLY a JSON object with these keys:
   issueTitle        string  - a short engineering ticket title, no customer voice
   issueDescription  string  - 2-4 lines: who reported it, the symptom, the impact
   category          one of: authentication | performance | ui | data | integration | unknown
-  area              one of: frontend | backend | ai-data | research | operations
+  area              one of: frontend | backend | ai-data | research | operations | unresolved
   severity          one of: low | medium | high | critical
-  labels            array of 1-4 short lowercase labels
+  labels            array of 1-2 short lowercase labels specific to this report (the team's bug/category/area labels are added automatically)
   evidence          array of 1-5 SHORT literal phrases quoted from the report that justify the classification
   confidence        number between 0 and 1
 
 Rules:
 - "area" is the engineering area that owns the fix, not where the user noticed it.
-- Every item in "evidence" must appear in the source text. Never invent evidence.
+  frontend = layout, rendering, browser or mobile UI; backend = auth, APIs, timeouts, server errors;
+  ai-data = models, predictions, training data; research = documentation or unclear specs;
+  operations = billing, seats, provisioning.
+- Use area "unresolved" and category "unknown" when the report names no concrete symptom.
+  Do not guess an area from a vague report; a human will decide instead.
+- "confidence" is how sure you are of the area. A report with no concrete symptom is below 0.5.
+- Every item in "evidence" must be copied verbatim from the report text. Never invent or paraphrase evidence.
 - Do not include any explanation or reasoning outside the JSON.`;
 
 export function buildUnderstandingUserPrompt(message: MailMessage): string {
@@ -355,6 +368,7 @@ export function buildUnderstandingUserPrompt(message: MailMessage): string {
 export function mergeUnderstanding(
   fallback: IssueUnderstanding,
   payload: UnderstandingPayload,
+  model?: string,
 ): IssueUnderstanding {
   return {
     ...fallback,
@@ -364,11 +378,74 @@ export function mergeUnderstanding(
     category: payload.category,
     area: payload.area,
     severity: payload.severity,
-    labels: payload.labels.length ? payload.labels : fallback.labels,
+    labels: conventionLabels(payload.category, payload.area, payload.labels),
     evidence: payload.evidence.length ? payload.evidence : fallback.evidence,
     confidence: payload.confidence,
     source: 'llm',
+    model,
   };
+}
+
+/**
+ * The team's labelling convention — `bug`, the category, the area — is what
+ * REPEAT observed the human apply, so it is kept regardless of what the model
+ * suggests. The model's own labels follow, for specificity, up to the cap.
+ */
+function conventionLabels(category: IssueCategory, area: EngineeringArea, suggested: string[]): string[] {
+  const base = ['bug', CATEGORY_LABEL[category], area].filter((l) => l !== 'unresolved');
+  const extras = suggested.map((l) => l.trim().toLowerCase()).filter((l) => l && !base.includes(l));
+  return unique([...base, ...extras]).slice(0, 5);
+}
+
+/**
+ * Normalise for the grounding check: case, whitespace and quote marks are
+ * ignored, so `"Invalid credentials" error` and `Invalid credentials error`
+ * are the same phrase. The words themselves must still appear, contiguously
+ * and in order, in the report \u2014 that is the property being enforced.
+ */
+function squash(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/["'\u201c\u201d\u2018\u2019]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Parse and validate a model's answer. Three gates, in order:
+ *
+ *   1. there is a JSON object in the text at all (models sometimes wrap it
+ *      in prose or a fence — the first `{...}` is taken);
+ *   2. it satisfies the schema;
+ *   3. every cited piece of evidence is a literal quote from the report.
+ *
+ * One hallucinated phrase disqualifies the whole response. Throws with a
+ * reason the caller surfaces as `fallbackReason`.
+ */
+export function validateModelAnswer(text: string, message: MailMessage): UnderstandingPayload {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('No JSON object in model response');
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(match[0]);
+  } catch {
+    throw new Error('Model response was not valid JSON');
+  }
+
+  const parsed = UnderstandingSchema.safeParse(raw);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    throw new Error(
+      `Model response failed validation: ${first?.path.join('.') || 'root'} ${first?.message ?? ''}`.trim(),
+    );
+  }
+
+  const haystack = squash(`${message.subject}\n${message.body}`);
+  const ungrounded = parsed.data.evidence.find((e) => !haystack.includes(squash(e)));
+  if (ungrounded) throw new Error(`Model cited evidence not present in the report: "${ungrounded}"`);
+
+  return parsed.data;
 }
 
 /* ------------------------------------------------------------------------ */

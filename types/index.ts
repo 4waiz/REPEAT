@@ -110,6 +110,20 @@ export type EngineeringArea =
   | 'unresolved';
 
 /**
+ * A related public reference found while understanding a report — a docs
+ * page, a similar public issue, a status post. Attached to the ticket so the
+ * owner starts with context instead of a blank page. Only the symptom is ever
+ * sent out to find these; never the customer's identity or the message body.
+ */
+export type IssueReference = {
+  title: string;
+  url: string;
+  /** Short excerpt of the page that matched the symptom. */
+  snippet: string;
+  publishedAt?: string;
+};
+
+/**
  * Structured interpretation of an inbound support email. This is the only
  * thing the UI is ever allowed to show about what the model concluded —
  * evidence and structure, never chain-of-thought.
@@ -128,6 +142,10 @@ export type IssueUnderstanding = {
   confidence: number;
   /** Which understanding path produced this. Shown in the Ghost Run. */
   source: 'deterministic' | 'llm';
+  /** The model behind an `llm` understanding, e.g. "openai/gpt-4.1-mini". */
+  model?: string;
+  /** Related context from the research step, when it ran. */
+  references?: IssueReference[];
 };
 
 /* ------------------------------------------------------------------------ */

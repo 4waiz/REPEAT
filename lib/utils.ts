@@ -64,3 +64,12 @@ export function jaccard<T>(a: T[], b: T[]): number {
   const union = setA.size + setB.size - inter;
   return union === 0 ? 0 : inter / union;
 }
+
+/** "https://www.example.com/a/b" -> "example.com". Falls back to the input. */
+export function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
