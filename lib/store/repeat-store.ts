@@ -22,6 +22,8 @@ import { specFor } from '@/lib/events/taxonomy';
 import { detect, liveConfidence } from '@/lib/patterns/detector';
 import { compilePattern } from '@/lib/patterns/compiler';
 import { understandDeterministic } from '@/lib/agents/understanding';
+import { requestUnderstanding } from '@/lib/agents/understand-client';
+import type { LiveUnderstanding } from '@/lib/agents/understanding-live';
 import { planRun, applyOwnerOverride } from '@/lib/agents/ghost-runner';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
 import { DemoIssueTrackerAdapter, DemoMessagingAdapter, type FailurePoint } from '@/lib/adapters/demo';
@@ -35,7 +37,7 @@ import {
   SEED_ISSUES,
   START_CHANNEL,
 } from '@/lib/demo/fixtures';
-import { TIMING } from '@/lib/demo/config';
+import { DEMO_MODE, TIMING } from '@/lib/demo/config';
 import { routeOwner } from '@/lib/demo/team';
 import { makeId, resetIdCounter, sleep } from '@/lib/utils';
 import { playCue } from '@/lib/sound/cues';
@@ -221,6 +223,62 @@ export const useRepeat = create<RepeatState>((set, get) => {
 
   const cue = (name: Parameters<typeof playCue>[0]) => {
     if (get().settings.soundOn) playCue(name);
+  };
+
+  /**
+   * Between "trigger detected" and the Ghost Run opening, REPEAT does its own
+   * reading of the report.
+   *
+   * Demo Mode: nothing happens on the network and the deterministic plan is
+   * final. Live: the server reads the report with a model via OpenRouter and
+   * researches it via Exa, in parallel, and the run is re-planned from that
+   * understanding — same planner, same policy, same rules — before anyone
+   * sees it. If the live pass fails or is slow, the deterministic plan
+   * stands, and the timeline says why.
+   */
+  const prepareGhostRun = async (run: AgentRun, message: MailMessage, pattern: LearnedPattern) => {
+    const [live] = await Promise.all([
+      DEMO_MODE ? Promise.resolve<LiveUnderstanding | null>(null) : requestUnderstanding(message),
+      sleep(TIMING.triggerToGhost),
+    ]);
+
+    // The run may have been cancelled, executed or replaced while we waited.
+    const current = get();
+    const stillPlanned =
+      current.activeRun?.id === run.id && current.activeRun.status === 'ghost' && !current.activeRun.approved;
+    if (!stillPlanned) return;
+
+    if (live) {
+      const { understanding, provenance } = live;
+      const replanned = planRun(pattern, message, understanding, current.nextIssueNumber);
+      set({
+        understanding,
+        activeRun: { ...replanned, id: run.id, startedAt: run.startedAt },
+      });
+
+      pushTimeline({
+        label: provenance.usedLlm ? `Report read by ${provenance.model}` : 'Report read by the deterministic classifier',
+        detail: provenance.usedLlm
+          ? `via OpenRouter · validated · evidence grounded in the report${
+              provenance.llmLatencyMs ? ` · ${(provenance.llmLatencyMs / 1000).toFixed(1)}s` : ''
+            }`
+          : provenance.fallbackReason,
+        origin: 'executed',
+        status: 'done',
+        app: 'repeat',
+      });
+      pushTimeline({
+        label: provenance.usedResearch
+          ? `${provenance.referenceCount} related reference${provenance.referenceCount === 1 ? '' : 's'} found via Exa`
+          : 'No related context attached',
+        detail: provenance.usedResearch ? `searched: ${provenance.researchQuery}` : provenance.researchReason,
+        origin: 'executed',
+        status: 'done',
+        app: 'repeat',
+      });
+    }
+
+    if (get().phase === 'trigger_detected') get().openGhostRun();
   };
 
   /** Append events to the active trace and recompute live confidence. */
@@ -718,7 +776,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
       });
       cue('trigger');
 
-      window.setTimeout(() => get().openGhostRun(), TIMING.triggerToGhost);
+      void prepareGhostRun(run, message, activePattern);
     },
 
     openGhostRun: () => {

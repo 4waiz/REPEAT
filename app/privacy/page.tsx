@@ -212,7 +212,7 @@ export default function PrivacyPage() {
             ·{' '}
             {DEMO_MODE
               ? 'Demo Mode is on, so no data leaves this machine at all — every adapter is in-memory.'
-              : 'Demo Mode is off, so the configured live adapters may send data to GitHub or Slack.'}
+              : 'Demo Mode is off. When REPEAT acts on a report it sends the report text to a model via OpenRouter, sends only the symptom phrase (never the sender or the body) to Exa, and the configured live adapters may send data to GitHub or Slack.'}
           </li>
           <li>
             · The redaction list is a deny-list of field names, which is a reasonable first line and

@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
+  ExternalLink,
   Eye,
   Ghost,
   Lock,
@@ -13,13 +14,13 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import type { AgentRun, PermissionClass, PlannedAction, RiskLevel } from '@/types';
+import type { AgentRun, IssueReference, PermissionClass, PlannedAction, RiskLevel } from '@/types';
 import { PERMISSION_POLICY } from '@/lib/policy/policy';
 import { AREA_DISPLAY, CATEGORY_DISPLAY, SEVERITY_DISPLAY } from '@/lib/agents/understanding';
 import { TEAM } from '@/lib/demo/team';
 import { Badge, Button, ConfidenceBar, Dot } from '@/components/ui/primitives';
 import { Orb } from '@/components/repeat/Orb';
-import { cn, formatPercent } from '@/lib/utils';
+import { cn, formatPercent, hostnameOf } from '@/lib/utils';
 
 /**
  * Ghost Run.
@@ -201,7 +202,11 @@ export function GhostRunPanel({
               <Row label="Labels" value={u.labels.join(', ')} />
               <Row
                 label="Understood by"
-                value={u.source === 'llm' ? 'language model (validated)' : 'deterministic classifier'}
+                value={
+                  u.source === 'llm'
+                    ? `${u.model ?? 'language model'} via OpenRouter · validated`
+                    : 'deterministic classifier'
+                }
               />
             </dl>
           </div>
@@ -219,6 +224,10 @@ export function GhostRunPanel({
               ))}
             </div>
           </div>
+
+          {u.references && u.references.length > 0 ? (
+            <ReferenceList references={u.references} />
+          ) : null}
 
           <div>
             <div className="eyebrow mb-2">Permissions requested</div>
@@ -292,6 +301,37 @@ function uniquePermissions(actions: PlannedAction[]): PermissionClass[] {
   ];
   const present = new Set(actions.map((a) => a.permission));
   return order.filter((p) => present.has(p));
+}
+
+/**
+ * Related context the research step attached. Public pages only, found from
+ * the symptom phrase; the customer's identity never left the machine.
+ */
+function ReferenceList({ references }: { references: IssueReference[] }) {
+  return (
+    <div>
+      <div className="eyebrow mb-2">Related context · via Exa</div>
+      <ul className="space-y-1.5">
+        {references.map((ref) => (
+          <li key={ref.url} className="rounded-md border border-edge-faint bg-white/[0.02] px-2 py-1.5">
+            <a
+              href={ref.url}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="flex items-start gap-1.5 text-xs text-mist-100 transition hover:text-cyan-200"
+            >
+              <span className="min-w-0 flex-1 truncate">{ref.title}</span>
+              <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 text-mist-600" />
+            </a>
+            <div className="mt-0.5 font-mono text-3xs text-mist-600">{hostnameOf(ref.url)}</div>
+            {ref.snippet ? (
+              <p className="mt-1 line-clamp-2 text-3xs leading-relaxed text-mist-500">{ref.snippet}</p>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function Row({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
