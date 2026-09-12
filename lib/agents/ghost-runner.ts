@@ -13,7 +13,7 @@ import { APPROVAL_SECONDS } from '@/lib/events/taxonomy';
 import { assessRisk, decide } from '@/lib/policy/policy';
 import { OWNER_CONFIDENCE_FLOOR } from '@/lib/demo/config';
 import { routeOwner } from '@/lib/demo/team';
-import { DEFAULT_CHANNEL, composeTeamMessage } from '@/lib/agents/compose';
+import { DEFAULT_CHANNEL, composeIssueBody, composeTeamMessage } from '@/lib/agents/compose';
 import { CATEGORY_DISPLAY } from '@/lib/agents/understanding';
 import { makeId, unique } from '@/lib/utils';
 
@@ -42,7 +42,7 @@ export function resolveVariables(
     customerName: understanding.customerName,
     customerEmail: understanding.customerEmail,
     issueTitle: understanding.issueTitle,
-    issueDescription: understanding.issueDescription,
+    issueDescription: composeIssueBody(understanding),
     category: understanding.category,
     area: understanding.area,
     severity: understanding.severity,
@@ -141,6 +141,7 @@ function buildPlanRows(
   values: Record<string, unknown>,
 ): PlanRow[] {
   const labels = (values.labels as string[]) ?? [];
+  const references = understanding.references?.length ?? 0;
   return [
     {
       action: 'mail.read_message',
@@ -154,7 +155,10 @@ function buildPlanRows(
       action: 'issue.extract_details',
       stepId: 'step_understand',
       title: 'Extract issue details',
-      detail: String(values.issueTitle),
+      detail:
+        references > 0
+          ? `${String(values.issueTitle)} · ${references} related reference${references === 1 ? '' : 's'} found`
+          : String(values.issueTitle),
       params: { issueTitle: values.issueTitle, issueDescription: values.issueDescription },
       permission: 'analyze',
     },
@@ -170,7 +174,7 @@ function buildPlanRows(
       action: 'tracker.compose_issue',
       stepId: 'step_create',
       title: 'Draft ticket',
-      detail: `"${values.issueTitle}"`,
+      detail: references > 0 ? `"${values.issueTitle}" · related context attached` : `"${values.issueTitle}"`,
       params: { issueTitle: values.issueTitle, issueDescription: values.issueDescription },
       permission: 'draft',
     },

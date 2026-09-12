@@ -24,7 +24,19 @@ export function composeTeamMessage(input: {
   return `New ${kind}bug reported by ${u.customerName}. Issue #${issueNumber} created and assigned to ${owner}.${urgency}`;
 }
 
-/** The ticket body REPEAT writes, identical in shape to the human's. */
+/**
+ * The ticket body REPEAT writes. Identical in shape to the human's, plus the
+ * related context the research step found — the one thing an agent can add
+ * to a ticket that the human never had time to. With no references (Demo
+ * Mode, or a failed search) it is byte-for-byte the human's body.
+ */
 export function composeIssueBody(u: IssueUnderstanding): string {
-  return u.issueDescription;
+  const references = u.references ?? [];
+  if (references.length === 0) return u.issueDescription;
+  return [
+    u.issueDescription,
+    '',
+    'Related context (found by REPEAT via Exa):',
+    ...references.map((r) => `- ${r.title} — ${r.url}`),
+  ].join('\n');
 }
