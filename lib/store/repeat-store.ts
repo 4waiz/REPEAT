@@ -12,6 +12,7 @@ import type {
   OrbState,
   SemanticAction,
   SemanticEvent,
+  SourceApp,
   StagePhase,
   TimelineEntry,
   TrackerIssue,
@@ -30,6 +31,7 @@ import { planRun, applyOwnerOverride } from '@/lib/agents/ghost-runner';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
 import { DemoIssueTrackerAdapter, DemoMessagingAdapter, type FailurePoint } from '@/lib/adapters/demo';
 import { RemoteIssueTrackerAdapter, RemoteMessagingAdapter } from '@/lib/adapters/remote';
+import { startExtensionFeed } from './extension-feed';
 import { DEFAULT_CHANNEL, composeTeamMessage } from '@/lib/agents/compose';
 import {
   BUG_FIXTURES,
@@ -167,6 +169,8 @@ export type RepeatState = {
 
   // ---- observation (the human working) ---------------------------------
   observe: (action: SemanticAction, data?: Record<string, unknown>) => void;
+  /** Add a message to the inbox (real mail connector, or the extension). No-op if present. */
+  receiveMail: (message: MailMessage) => void;
   readMail: (id: string) => void;
   copyMail: () => void;
   openComposer: () => void;
@@ -484,9 +488,24 @@ export const useRepeat = create<RepeatState>((set, get) => {
       });
 
       // Live mode: ask the server once where consequential steps would land,
-      // so the Ghost Run can say so before anyone approves. Demo Mode never
-      // makes this request.
-      if (!DEMO_MODE) void loadLiveTargets();
+      // so the Ghost Run can say so before anyone approves, and start
+      // listening to the Chrome extension. Demo Mode never makes a request.
+      if (!DEMO_MODE) {
+        void loadLiveTargets();
+        startExtensionFeed(
+          { getState: get },
+          (event, summary) => {
+            const app = (['mail', 'tracker', 'chat'].includes(event.sourceApp) ? event.sourceApp : 'repeat') as SourceApp;
+            pushTimeline({
+              label: summary,
+              detail: event.pageContext?.title ? event.pageContext.title.slice(0, 80) : undefined,
+              origin: summary.startsWith('Watching') ? 'system' : 'observed',
+              status: 'done',
+              app,
+            });
+          },
+        );
+      }
     },
 
     reset: () => {
@@ -567,6 +586,11 @@ export const useRepeat = create<RepeatState>((set, get) => {
           app: e.sourceApp,
         });
       }
+    },
+
+    receiveMail: (message) => {
+      if (get().inbox.some((m) => m.id === message.id)) return;
+      set((s) => ({ inbox: [message, ...s.inbox] }));
     },
 
     readMail: (id) => {

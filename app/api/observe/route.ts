@@ -9,7 +9,10 @@ import { z } from 'zod';
  * trusted source, so nothing is taken on faith just because the extension
  * claims to have already filtered it.
  *
- * Events are held in a small in-memory ring buffer. There is no database in
+ * Events are held in a small in-memory ring buffer with a monotonic
+ * sequence number, so the workspace can poll `GET ?since=<seq>` and feed
+ * what the human really did — in the real Gmail, ClickUp or Jira tab — into
+ * the same observe() path the replica apps use. There is no database in
  * this prototype, which is stated plainly on the privacy page.
  */
 
@@ -38,16 +41,31 @@ const BodySchema = z.object({ events: z.array(EventSchema).max(200) });
 const REDACTED_KEY_PATTERN =
   /(password|passwd|secret|token|apikey|api_key|auth|otp|pin|cvv|card|iban|ssn)/i;
 
-const BUFFER_LIMIT = 500;
-const buffer: z.infer<typeof EventSchema>[] = [];
+/**
+ * Keys that may carry a longer string: what the human wrote in a ticket is
+ * workflow content, not page text. Everything else is capped short.
+ */
+const CONTENT_KEYS = new Set(['issueTitle', 'issueDescription', 'subject', 'teamMessage']);
+const LONG_TEXT_LIMIT = 200;
+const CONTENT_LIMIT = 2000;
 
-function scrub(event: z.infer<typeof EventSchema>) {
+const BUFFER_LIMIT = 500;
+
+type StoredEvent = z.infer<typeof EventSchema> & { seq: number };
+
+const buffer: StoredEvent[] = [];
+let nextSeq = 1;
+
+function scrub(event: z.infer<typeof EventSchema>): z.infer<typeof EventSchema> {
   const data = event.structuredData ?? {};
   const clean: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(data)) {
     if (REDACTED_KEY_PATTERN.test(key)) continue;
-    // Never retain long free text from a page, whatever the key is called.
-    if (typeof value === 'string' && value.length > 200) continue;
+    if (typeof value === 'string') {
+      const limit = CONTENT_KEYS.has(key) ? CONTENT_LIMIT : LONG_TEXT_LIMIT;
+      // Never retain long free text from a page, whatever the key is called.
+      if (value.length > limit) continue;
+    }
     clean[key] = value;
   }
   // Query strings are dropped even if the extension sent one.
@@ -66,18 +84,25 @@ export async function POST(request: Request) {
   }
 
   for (const event of body.events) {
-    buffer.push(scrub(event));
+    buffer.push({ ...scrub(event), seq: nextSeq });
+    nextSeq += 1;
     if (buffer.length > BUFFER_LIMIT) buffer.shift();
   }
 
-  return NextResponse.json({ accepted: body.events.length, buffered: buffer.length });
+  return NextResponse.json({ accepted: body.events.length, buffered: buffer.length, seq: nextSeq - 1 });
 }
 
-export async function GET() {
-  return NextResponse.json({ events: buffer.slice(-100), buffered: buffer.length });
+/**
+ * `?since=<seq>` returns only what arrived after that sequence number, so a
+ * poller never replays an observation. Without it: the last 100 events.
+ */
+export async function GET(request: Request) {
+  const since = Number(new URL(request.url).searchParams.get('since') ?? NaN);
+  const events = Number.isFinite(since) ? buffer.filter((e) => e.seq > since) : buffer.slice(-100);
+  return NextResponse.json({ events, buffered: buffer.length, seq: nextSeq - 1 });
 }
 
 export async function DELETE() {
   buffer.length = 0;
-  return NextResponse.json({ cleared: true });
+  return NextResponse.json({ cleared: true, seq: nextSeq - 1 });
 }
