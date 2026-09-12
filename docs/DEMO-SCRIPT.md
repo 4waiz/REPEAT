@@ -133,5 +133,8 @@ via OpenRouter and Exa attaching related context — set `DEMO_MODE=false` plus
 the two keys in `.env`, run `npm run verify:live` first, and keep the demo
 console's "demo mode" badge in view: it reads "live adapters" when live. The
 only visible differences are the "Understood by" row, the "Related context"
-list in the Ghost Run, and two extra timeline entries. Everything else is the
+list in the Ghost Run, the "Planning · n of 9 steps" count while the plan
+streams in over AG-UI, the "Ghost Run streamed via CopilotKit" timeline entry,
+and — after Execute — a real ticket in ClickUp (or Ambiguous with
+`TRACKER=ambiguous`) with an "open in tracker" link. Everything else is the
 same engine.

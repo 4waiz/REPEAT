@@ -135,18 +135,29 @@ Tick these — each one is verifiable in the repo:
 - **OpenAI** — the default OpenRouter model is `openai/gpt-4.1-mini`, so in
   live mode an OpenAI model is what reads the report. (If you also used Codex
   while building, that is a second honest reason.)
+- **CopilotKit** — in live mode the Ghost Run is streamed over AG-UI through
+  a self-hosted CopilotKit runtime (`app/api/copilotkit/[[...slug]]/route.ts`,
+  `components/copilot/`): REPEAT's planner is a custom AG-UI agent and every
+  proposed action arrives as a generative-UI tool call. No chat component is
+  mounted and no prompt is typed. Judges can run `npm run verify:copilotkit`.
+- **Ambiguous AI** — the approved "Create issue" step files a real task
+  through the Ambiguous Tasks API (`lib/adapters/ambiguous.ts`), by default
+  against their credential-free sandbox, or a real workspace with an `ak_`
+  key. Judges can run `npm run verify:ambiguous` with no account.
 - **AI Tinkerers** — tick if you count the event/platform as helpful (your call).
 - **Other products (not on the tick list):** **ClickUp** — the agent files the
   real ticket there (`lib/adapters/clickup.ts`); **Google Gemini API** — an
   optional direct model provider.
 
-Do **not** tick CopilotKit, Trigger.dev, Auth0, Mozilla.ai or Ambiguous AI —
-none of them are in the repo, and a false claim costs more than a missing tick.
+Do **not** tick Trigger.dev, Auth0 or Mozilla.ai — they were researched and
+deliberately not built (see `docs/STACK.md`), and a false claim costs more
+than a missing tick. Auth0 becomes honest only if a team member creates a
+tenant and the 401 → login → approve path is wired and demonstrated.
 
 - **Other Products** — paste:
 
 ```
-OpenRouter (live model understanding via chat completions with model routing; default openai/gpt-4.1-mini, fallback anthropic/claude-haiku-4.5), Exa (related-context research attached to the Ghost Run and ticket), ClickUp API (the approved run creates and assigns a real task in the team's list), Google Gemini API (optional direct model provider via the OpenAI-compatible endpoint), Claude Code (build tooling), Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, React Flow (@xyflow/react), Zustand, Zod, Lucide, Chrome Extensions Manifest V3, GitHub REST API + Slack webhooks (optional live adapters). The judged demo also runs fully offline in Demo Mode with a deterministic classifier.
+OpenRouter (live model understanding via chat completions with model routing; default openai/gpt-4.1-mini, fallback anthropic/claude-haiku-4.5), Exa (related-context research attached to the Ghost Run and ticket), CopilotKit (self-hosted AG-UI runtime; REPEAT's planner runs as a custom agent and streams the Ghost Run as generative-UI tool calls, no chat), Ambiguous AI (Tasks API — the approved run files a real task, sandbox or workspace), ClickUp API (the approved run creates and assigns a real task in the team's list), Google Gemini API (optional direct model provider via the OpenAI-compatible endpoint), Claude Code (build tooling), Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, React Flow (@xyflow/react), Zustand, Zod, Lucide, Chrome Extensions Manifest V3, GitHub REST API + Slack webhooks (optional live adapters). The judged demo also runs fully offline in Demo Mode with a deterministic classifier.
 ```
 
 ---
@@ -278,6 +289,6 @@ Code: https://github.com/4waiz/REPEAT
 AI Tinkerers, OpenAI, CopilotKit, OpenRouter, Exa, Auth0, Ambiguous AI, Trigger.dev, Mozilla.ai, Google Cloud
 ```
 
-> Both posts tag the sponsor list because the form requires it. OpenRouter
-> and Exa are genuinely used (live mode); the others are tags only — keep it
-> that way.
+> Both posts tag the sponsor list because the form requires it. OpenRouter,
+> Exa, CopilotKit and Ambiguous AI are genuinely used (live mode); Auth0,
+> Trigger.dev and Mozilla.ai are tags only — keep it that way.

@@ -189,7 +189,8 @@ Each stage is one module, and the boundaries are real:
 | Ghost Runner | [`lib/agents/ghost-runner.ts`](lib/agents/ghost-runner.ts) |
 | Policy | [`lib/policy/policy.ts`](lib/policy/policy.ts) |
 | Executor + Verifier | [`lib/agents/executor.ts`](lib/agents/executor.ts) |
-| Adapters (in-memory, ClickUp, GitHub, Slack, remote) | [`lib/adapters/`](lib/adapters) |
+| Adapters (in-memory, ClickUp, Ambiguous, GitHub, Slack, remote) | [`lib/adapters/`](lib/adapters) |
+| Planner as an AG-UI agent (CopilotKit runtime) | [`app/api/copilotkit/[[...slug]]/route.ts`](app/api/copilotkit/%5B%5B...slug%5D%5D/route.ts), [`components/copilot/`](components/copilot) |
 | Live engine state | [`lib/store/repeat-store.ts`](lib/store/repeat-store.ts) |
 
 ---
@@ -345,6 +346,8 @@ configuration at all, REPEAT runs fully offline.
 | `npm run dev` | development server |
 | `npm run verify` | headless engine self-test (58 assertions) |
 | `npm run verify:live` | live integration self-test against OpenRouter and Exa (needs `.env`) |
+| `npm run verify:ambiguous` | files the demo ticket into Ambiguous's sandbox and reads it back (no account) |
+| `npm run verify:copilotkit` | streams the Ghost Run over AG-UI from the running dev server (live mode) |
 | `npm run typecheck` | TypeScript, no emit |
 | `npm run lint` | ESLint |
 | `npm run check` | all three |
@@ -397,6 +400,8 @@ and set `DEMO_MODE=false`.
 |---|---|---|
 | Model understanding via **OpenRouter** | `OPENROUTER_API_KEY` (+ `OPENROUTER_MODEL`, default `openai/gpt-4.1-mini`) | When a learned trigger fires, REPEAT reads the new report with the model. Zod-validated; every cited piece of evidence must be a literal quote from the report or the whole answer is refused; the model may answer `unresolved`, which routes to human review; 8s timeout; falls back to the deterministic classifier on any failure |
 | Related context via **Exa** | `EXA_API_KEY` | In parallel with the model, REPEAT searches for public pages related to the symptom (docs, similar issues, status posts) and attaches up to three to the Ghost Run and the ticket body. Only the symptom phrase is sent — never the sender, their address or the message body; 6s timeout; a failure attaches nothing |
+| Ghost Run over AG-UI via **CopilotKit** | nothing — on whenever Demo Mode is off | REPEAT's planner runs as a custom AG-UI agent on a self-hosted CopilotKit runtime (`/api/copilotkit`). When a trigger fires the browser runs the agent with the report and the learned pattern; every proposed action streams back as a tool call and the Ghost Run materialises step by step ("Planning · 4 of 9"). No chat component, no typed prompt; approval stays with the policy layer |
+| Real tickets in **Ambiguous AI** | `AMBIGUOUS_SANDBOX=true` (no account) or `AMBIGUOUS_API_KEY` | The same "Create issue" step lands in Ambiguous's Tasks API — by default their credential-free disposable sandbox (tasks only, one hour, owner recorded on the task because the sandbox has no assignee field), or a real workspace with an `ak_` key (real assignee, channel notification). `TRACKER=ambiguous` selects it when ClickUp is also configured |
 | Real tickets in **ClickUp** | `CLICKUP_API_KEY`, `CLICKUP_LIST_ID` (+ `CLICKUP_ASSIGNEES`) | After approval, the "Create issue" and "Assign owner" steps create and assign a real task in the list — title, markdown body with the Exa references, labels as tags, priority mapped to ClickUp's urgent/high/normal/low. The replica tracker mirrors it with a link; the team message carries the real URL |
 | GitHub issues | `GITHUB_TOKEN`, `GITHUB_REPO` | used when ClickUp is not configured |
 | Slack | `SLACK_WEBHOOK_URL` | real messages; without it the replica chat stays in charge, labelled as such |

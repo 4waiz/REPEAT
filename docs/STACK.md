@@ -15,6 +15,8 @@ that the code does not actually call.
 | **Zustand** | [`lib/store/repeat-store.ts`](../lib/store/repeat-store.ts) | The live engine state. Every UI transition and the headless self-test go through the same pipeline. |
 | **Tailwind CSS · Framer Motion · React Flow (@xyflow/react) · Lucide** | `components/` | The interface: the Ghost Run, the Memory Map, the timeline, the orb. |
 | **Chrome Extensions Manifest V3** | [`extension/`](../extension) | The real observation layer — DOM interactions become semantic events posted to `/api/observe`, which re-validates and re-redacts everything. |
+| **CopilotKit** (AG-UI) | [`app/api/copilotkit/[[...slug]]/route.ts`](../app/api/copilotkit/%5B%5B...slug%5D%5D/route.ts), [`components/copilot/`](../components/copilot) | The *transport* for the Ghost Run in live mode. REPEAT's planner is registered as a custom AG-UI agent (`ghost`) on a self-hosted CopilotKit runtime; the browser runs it with the report and the learned pattern, and each proposed action arrives as a generative-UI tool call that REPEAT renders in its own Ghost Run layout, with a live "Planning · n of 9" count. No chat component is mounted and no prompt is typed — CopilotKit carries the plan, the policy layer still owns approval. `npm run verify:copilotkit` proves the stream shape. |
+| **Ambiguous AI** | [`lib/adapters/ambiguous.ts`](../lib/adapters/ambiguous.ts), `POST /api/execute` | A second real home for the ticket: Ambiguous's Tasks API, in the workspace where humans and agents share the same apps. Default is their credential-free sandbox (one-hour sessions, tasks only — the owner is recorded on the task and the result says so, since the sandbox has no assignee field); an `ak_` key switches to a real workspace with real assignment and a channel notification. `npm run verify:ambiguous` proves create / record owner / read back / filter / revoke with no account. |
 | **ClickUp** | [`lib/adapters/clickup.ts`](../lib/adapters/clickup.ts), [`lib/adapters/remote.ts`](../lib/adapters/remote.ts), `POST /api/execute` | The *ticketing* step, for real. After the one approval, the executor's "Create issue" and "Assign owner" steps create a task in a ClickUp list (title, markdown body with the Exa references, labels as tags, priority urgent/high/normal/low) and assign it by matching the owner's name against workspace members. The browser-side executor is unchanged; each consequential step goes to `/api/execute`, which derives the permission from the action and re-runs the policy guard. |
 | **Google Gemini API** (direct, optional) | [`lib/llm/openrouter.ts`](../lib/llm/openrouter.ts) | Same client, Google's OpenAI-compatible endpoint (`GEMINI_API_KEY`), used when no OpenRouter key is set. |
 | **GitHub REST API · Slack webhooks** | [`lib/adapters/github.ts`](../lib/adapters/github.ts), `POST /api/execute` | Optional live executors behind the same adapter interface; GitHub is used when ClickUp is not configured. |
@@ -72,7 +74,23 @@ graceful failure and the unchanged reroute.
 produced task `z8t8qgd17k` in the team's *Engineering & Delivery* list:
 model-written title and description, the three Exa references in the body,
 tags `bug, ui, frontend, mobile, navigation`, priority high, assigned — and
-the completion card links to it. Demo Mode still touches nothing.
+the completion card links to it. With `TRACKER=ambiguous` the same run filed
+`SBX-2` in Ambiguous's sandbox. Demo Mode still touches nothing.
+
+**The plan arrives as generative UI, not as a chat.** In live mode the Ghost
+Run is streamed over AG-UI by CopilotKit's runtime: nine `proposeAction` tool
+calls and one `proposeRun`, no text message at all. That is the frontend
+stack for agents used for exactly what REPEAT is — an agent that acts in the
+tools where the work happens — without adding the chat box the product
+deliberately does not have.
+
+**What was researched and deliberately not built.** Trigger.dev (would move
+execution out of the browser executor that carries the safety guarantees,
+and needs an account, a CLI login and a second live process), Auth0 (a
+strong fit — approval attributed to a verified identity — but it needs a
+tenant a team member creates; wired only if that happens) and Mozilla.ai
+(their offering is a self-hosted gateway sidecar that needs Docker, which
+the demo machine does not have). None of these are claimed.
 
 ## 3. How to advance this agent
 
@@ -106,8 +124,18 @@ In rough order of value for effort, and using tools already in the stack:
    observation before it is allowed to bind a variable. The compiler stays
    the authority; the model only proposes.
 7. **Real surfaces.** The Chrome extension already emits semantic events;
-   wire it to Gmail, GitHub Issues and Slack, and switch `/api/execute` on so
-   the same run files a real issue and posts a real message.
+   wire it to Gmail, GitHub Issues and Slack. Live execution already files
+   real tickets (ClickUp, Ambiguous); Slack and an Ambiguous channel are one
+   env var away for the notification step.
+8. **Durable execution.** Trigger.dev is the natural next step for the
+   executor: approval as a wait token, each `create_external` /
+   `send_message` step as an idempotent child task, status streamed back —
+   without giving up the per-action guard.
+9. **Attributed approval.** Auth0 in front of `/api/execute`: 401 without a
+   session, the approver's identity recorded on every consequential result.
+10. **Human-in-the-loop over AG-UI.** CopilotKit's runtime supports
+    interrupts; the owner-review step ("Noor or Umar?") could pause the
+    streamed run and resume it with the human's answer.
 8. **An accuracy benchmark.** Grow the four fixtures into fifty reports with
    golden labels and extend `verify:live` to score each model's accuracy,
    latency and cost, so the default model is chosen by measurement rather
