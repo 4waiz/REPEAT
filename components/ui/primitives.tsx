@@ -8,14 +8,36 @@ import { cn } from '@/lib/utils';
 /* Panel                                                                  */
 /* ---------------------------------------------------------------------- */
 
+/**
+ * Panel tints.
+ *
+ * Used at very low alpha as a wash behind REPEAT's own surfaces, so each
+ * inspection panel is identifiable at a glance from across a room. Only
+ * REPEAT's panels are tinted — the Gmail, ClickUp and Slack windows keep
+ * those products' real themes, because a tinted Gmail would read as fake.
+ */
+const TINTS = {
+  cream: '#fdf4d2',
+  sky: '#b0cde6',
+  violet: '#a290b7',
+  rose: '#946d6d',
+} as const;
+
+export type PanelTint = keyof typeof TINTS;
+
 export function Panel({
   className,
   children,
   flat,
+  tint,
   ...rest
-}: React.HTMLAttributes<HTMLDivElement> & { flat?: boolean }) {
+}: React.HTMLAttributes<HTMLDivElement> & { flat?: boolean; tint?: PanelTint }) {
   return (
-    <div className={cn(flat ? 'panel-flat' : 'panel', 'surface-sheen', className)} {...rest}>
+    <div
+      className={cn(flat ? 'panel-flat' : 'panel', 'surface-sheen', tint && 'panel-tinted', className)}
+      style={tint ? ({ '--tint': TINTS[tint] } as React.CSSProperties) : undefined}
+      {...rest}
+    >
       {children}
     </div>
   );
@@ -35,7 +57,11 @@ export function PanelHeader({
   return (
     <div className={cn('flex items-center justify-between gap-3 px-4 pt-3.5 pb-2.5', className)}>
       <div className="flex min-w-0 items-center gap-2">
-        {icon ? <span className="text-mist-500 [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span> : null}
+        {icon ? (
+          <span data-panel-icon className="text-mist-500 [&>svg]:h-3.5 [&>svg]:w-3.5">
+            {icon}
+          </span>
+        ) : null}
         <span className="eyebrow truncate">{title}</span>
       </div>
       {right ? <div className="flex shrink-0 items-center gap-2">{right}</div> : null}

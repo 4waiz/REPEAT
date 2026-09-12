@@ -17,6 +17,8 @@ const nextConfig = {
     // Demo Mode is ON unless explicitly disabled. A hackathon demo must never
     // depend on the network. See lib/demo/config.ts for the resolution order.
     NEXT_PUBLIC_DEMO_MODE: process.env.DEMO_MODE ?? process.env.NEXT_PUBLIC_DEMO_MODE ?? 'true',
+    // area=channel pairs, so the planner can name the right desk in the browser.
+    NEXT_PUBLIC_SLACK_AREA_CHANNELS: process.env.SLACK_AREA_CHANNELS ?? '',
   },
 };
 

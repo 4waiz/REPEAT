@@ -282,6 +282,7 @@ const STEP_PARAM_FIELDS: Record<StepKey, string[]> = {
   create: ['issueTitle', 'issueDescription', 'labels', 'severity'],
   assign: ['owner', 'area'],
   notify: ['channel', 'teamMessage', 'owner', 'issueNumber'],
+  reply: ['customerEmail', 'customerName', 'owner', 'area', 'issueNumber'],
 };
 
 function permissionRank(p: string): number {

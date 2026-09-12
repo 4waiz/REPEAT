@@ -7,6 +7,7 @@ export const metadata: Metadata = {
   description:
     'REPEAT is an AI layer that learns repetitive workflows by watching how you already work. Your behavior becomes the automation.',
   applicationName: 'REPEAT',
+  icons: { icon: '/logo.png', apple: '/logo.png' },
 };
 
 export const viewport: Viewport = {

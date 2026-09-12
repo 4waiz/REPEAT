@@ -8,10 +8,16 @@ import {
   AmbiguousIssueTrackerAdapter,
   ambiguousConfig,
 } from '@/lib/adapters/ambiguous';
-import { GitHubIssueTrackerAdapter, SlackMessagingAdapter } from '@/lib/adapters/github';
+import {
+  GitHubIssueTrackerAdapter,
+  SlackBotMessagingAdapter,
+  SlackMessagingAdapter,
+} from '@/lib/adapters/github';
 import { JiraIssueTrackerAdapter, jiraConfig } from '@/lib/adapters/jira';
 import type { IssueTrackerAdapter, MessagingAdapter } from '@/lib/adapters/types';
 import { assertExecutable } from '@/lib/policy/policy';
+import { gmailOAuthConfig, isConnected, sendReplyOAuth } from '@/lib/mail/gmail-oauth';
+import { ok, fail } from '@/lib/adapters/types';
 
 /**
  * Live execution endpoint — one consequential action per call.
@@ -53,10 +59,17 @@ const AssignParams = z.object({
 
 const NotifyParams = z.object({ channel: z.string().min(1), teamMessage: z.string().min(1) });
 
+const ReplyParams = z.object({
+  messageId: z.string().min(1),
+  customerEmail: z.string().min(1),
+  body: z.string().min(1),
+});
+
 const BodySchema = z.discriminatedUnion('action', [
   z.object({ approved: z.boolean(), action: z.literal('tracker.create_issue'), params: CreateIssueParams }),
   z.object({ approved: z.boolean(), action: z.literal('tracker.assign_owner'), params: AssignParams }),
   z.object({ approved: z.boolean(), action: z.literal('chat.notify_team'), params: NotifyParams }),
+  z.object({ approved: z.boolean(), action: z.literal('mail.reply_customer'), params: ReplyParams }),
 ]);
 
 /** The permission each live action carries — decided here, not by the caller. */
@@ -64,6 +77,7 @@ const PERMISSION: Record<z.infer<typeof BodySchema>['action'], PermissionClass> 
   'tracker.create_issue': 'create_external',
   'tracker.assign_owner': 'create_external',
   'chat.notify_team': 'send_message',
+  'mail.reply_customer': 'send_message',
 };
 
 type Bound<T> = { adapter: T; target: string };
@@ -120,6 +134,12 @@ function bindTracker(): Bound<IssueTrackerAdapter> | null {
 }
 
 function bindMessaging(): Bound<MessagingAdapter> | null {
+  // A bot token can reach every desk; the webhook only ever reaches the one
+  // channel it was installed against, so it is the fallback.
+  const botToken = process.env.SLACK_BOT_TOKEN;
+  if (botToken) {
+    return { adapter: new SlackBotMessagingAdapter(botToken), target: 'Slack · per-desk channels' };
+  }
   const webhook = process.env.SLACK_WEBHOOK_URL;
   if (webhook) return { adapter: new SlackMessagingAdapter(webhook), target: 'Slack webhook' };
   const ambiguous = ambiguousConfig();
@@ -229,11 +249,40 @@ export async function POST(request: Request) {
     }
     case 'chat.notify_team': {
       const messaging = bindMessaging();
-      if (!messaging) return notConfigured('No messaging adapter configured (SLACK_WEBHOOK_URL).');
+      if (!messaging) return notConfigured('No messaging adapter configured (SLACK_BOT_TOKEN or SLACK_WEBHOOK_URL).');
       result = await messaging.adapter.postMessage({
         channel: body.params.channel,
         body: body.params.teamMessage,
       });
+      break;
+    }
+    case 'mail.reply_customer': {
+      const gmail = gmailOAuthConfig();
+      if (!gmail) {
+        return notConfigured('No mail sender configured (GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET).');
+      }
+      if (!isConnected()) {
+        return notConfigured('Gmail is not connected. Open /api/mail/auth and grant access.');
+      }
+      const started = Date.now();
+      try {
+        const sent = await sendReplyOAuth(gmail, {
+          messageId: body.params.messageId,
+          body: body.params.body,
+        });
+        result = ok(
+          'gmail',
+          `Replied to ${sent.to}`,
+          { to: sent.to, subject: sent.subject, threadId: sent.threadId },
+          Date.now() - started,
+        );
+      } catch (error) {
+        result = fail(
+          'gmail',
+          error instanceof Error ? error.message : 'Gmail reply failed',
+          Date.now() - started,
+        );
+      }
       break;
     }
   }

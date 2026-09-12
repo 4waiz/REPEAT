@@ -11,7 +11,7 @@
  *     never the customer's name, address or message body
  *   - a bad key degrades to the deterministic answer, never to an error
  *   - the live understanding flows through the same planner and still
- *     reroutes the frontend bug to Noor
+ *     reroutes the billing complaint to Awaiz
  *
  * Needs OPENROUTER_API_KEY and EXA_API_KEY in .env. Costs a fraction of a
  * cent per run. Run with:  npm run verify:live
@@ -90,12 +90,12 @@ async function main() {
       check(`${name} was read by the model`, live.provenance.usedLlm, live.provenance.fallbackReason ?? live.provenance.model);
     }
     check('model name is reported', results.every((r) => !r.provenance.usedLlm || Boolean(r.provenance.model)));
-    check('bug 1 is backend', live1.understanding.area === 'backend', live1.understanding.area);
+    check('bug 1 is technical support', live1.understanding.area === 'technical-support', live1.understanding.area);
     check('bug 1 is authentication', live1.understanding.category === 'authentication', live1.understanding.category);
-    check('bug 2 is backend', live2.understanding.area === 'backend', live2.understanding.area);
+    check('bug 2 is technical support', live2.understanding.area === 'technical-support', live2.understanding.area);
     check('bug 2 is performance', live2.understanding.category === 'performance', live2.understanding.category);
-    check('bug 3 is frontend', live3.understanding.area === 'frontend', live3.understanding.area);
-    check('bug 3 is ui', live3.understanding.category === 'ui', live3.understanding.category);
+    check('bug 3 is billing', live3.understanding.area === 'billing', live3.understanding.area);
+    check('bug 3 is a data issue', live3.understanding.category === 'data', live3.understanding.category);
     check(
       'ambiguous bug 4 stops for review',
       live4.understanding.area === 'unresolved' || live4.understanding.confidence < OWNER_CONFIDENCE_FLOOR,
@@ -104,7 +104,7 @@ async function main() {
     check('customer name kept', live1.understanding.customerName.toLowerCase().includes('alex'), live1.understanding.customerName);
     check(
       'labels keep the observed convention (bug + category + area)',
-      live3.understanding.labels.slice(0, 3).join(',') === 'bug,ui,frontend',
+      live3.understanding.labels.slice(0, 3).join(',') === 'bug,data,billing',
       live3.understanding.labels.join(','),
     );
 
@@ -191,8 +191,8 @@ async function main() {
   for (const ad of run.adaptations) console.log(`  adaptation: ${ad.field} ${ad.observedValue} -> ${ad.adaptedValue} (${ad.rule})`);
 
   check('run is a ghost, not approved', run.status === 'ghost' && !run.approved);
-  check('frontend bug reroutes to Noor', assign?.resolvedParams.owner === 'Noor', String(assign?.resolvedParams.owner));
-  check('adaptation recorded', run.adaptations.some((a) => a.field === 'owner' && a.adaptedValue === 'Noor'));
+  check('billing complaint reroutes to Awaiz', assign?.resolvedParams.owner === 'Awaiz', String(assign?.resolvedParams.owner));
+  check('adaptation recorded', run.adaptations.some((a) => a.field === 'owner' && a.adaptedValue === 'Awaiz'));
   if (live3.provenance.usedResearch) {
     const body = String(create?.resolvedParams.issueDescription);
     check('ticket body carries the related context', body.includes('Related context') && body.includes('https://'), `${body.split('\n').length} lines`);

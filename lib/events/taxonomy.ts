@@ -29,10 +29,10 @@ export type ActionSpec = {
   inferred?: boolean;
 };
 
-/** The five compiled steps the Memory Map renders. */
-export type StepKey = 'read' | 'understand' | 'create' | 'assign' | 'notify';
+/** The compiled steps the Memory Map renders. */
+export type StepKey = 'read' | 'understand' | 'create' | 'assign' | 'notify' | 'reply';
 
-export const STEP_ORDER: StepKey[] = ['read', 'understand', 'create', 'assign', 'notify'];
+export const STEP_ORDER: StepKey[] = ['read', 'understand', 'create', 'assign', 'notify', 'reply'];
 
 export const STEP_META: Record<
   StepKey,
@@ -67,6 +67,12 @@ export const STEP_META: Record<
     source: 'Team chat',
     app: 'chat',
     description: 'The responsible channel is told what happened and who owns it.',
+  },
+  reply: {
+    title: 'Reply to customer',
+    source: 'Email',
+    app: 'mail',
+    description: 'The person who wrote in gets their reference and the desk that owns it.',
   },
 };
 
@@ -202,6 +208,18 @@ export const ACTION_SPECS: Record<SemanticAction, ActionSpec> = {
     permission: 'send_message',
     effortSeconds: 4,
     stepKey: 'notify',
+  },
+  'mail.reply_customer': {
+    action: 'mail.reply_customer',
+    app: 'mail',
+    label: 'Reply to customer',
+    intent: 'acknowledge the report and give the customer their reference',
+    entityType: 'email',
+    permission: 'send_message',
+    // Writing an acknowledgement by hand is the step that quietly gets
+    // skipped when triage is busy, which is exactly why it is worth learning.
+    effortSeconds: 55,
+    stepKey: 'reply',
   },
 };
 

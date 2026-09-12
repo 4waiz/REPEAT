@@ -107,6 +107,67 @@
     @apply relative rounded-panel border border-edge-faint bg-ink-900/60;
   }
 
+  /* A tinted REPEAT surface. The colour arrives as --tint from the Panel
+     component; everything here is derived from it, so adding a tint is one
+     token and never a new rule. Kept under 10% alpha: at higher strength the
+     wash starts competing with the cyan accent for attention on stage. */
+  .panel-tinted {
+    background-image: radial-gradient(
+      130% 90% at 50% -25%,
+      color-mix(in srgb, var(--tint) 9%, transparent),
+      transparent 72%
+    );
+    transition:
+      border-color 0.35s ease,
+      box-shadow 0.35s ease,
+      transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Accent hairline along the top edge, brightening on hover. */
+  .panel-tinted::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--tint) 60%, transparent) 22%,
+      color-mix(in srgb, var(--tint) 60%, transparent) 78%,
+      transparent
+    );
+    opacity: 0.45;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+  }
+
+  .panel-tinted:hover {
+    border-color: color-mix(in srgb, var(--tint) 24%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--tint) 7%, transparent);
+  }
+
+  .panel-tinted:hover::after {
+    opacity: 1;
+  }
+
+  /* The header icon carries its panel's tint, lightened so it stays legible
+     against the near-black ground. */
+  .panel-tinted [data-panel-icon] {
+    color: color-mix(in srgb, var(--tint) 78%, white);
+    transition: color 0.35s ease;
+  }
+
+  /* Someone who has asked for less motion gets the colour, not the movement. */
+  @media (prefers-reduced-motion: reduce) {
+    .panel-tinted,
+    .panel-tinted::after,
+    .panel-tinted [data-panel-icon] {
+      transition: none;
+    }
+  }
+
   /* A replica application window. */
   .app-window {
     @apply relative flex min-h-0 flex-col overflow-hidden rounded-window border border-edge-soft bg-ink-900/80 shadow-panel backdrop-blur-md;

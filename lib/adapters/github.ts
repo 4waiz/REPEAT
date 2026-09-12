@@ -164,3 +164,57 @@ export class SlackMessagingAdapter implements MessagingAdapter {
     }
   }
 }
+
+/**
+ * Slack via a bot token.
+ *
+ * An incoming webhook is welded to one channel at install time, which cannot
+ * express "announce this in the desk that owns it". A bot token can post
+ * anywhere, and with chat:write.public it does not have to be invited to each
+ * channel first — so adding a desk in Slack needs no change here.
+ */
+export class SlackBotMessagingAdapter implements MessagingAdapter {
+  readonly name = 'slack';
+  readonly live = true;
+
+  constructor(private readonly botToken: string) {}
+
+  async postMessage(input: { channel: string; body: string }): Promise<ActionResult> {
+    const started = Date.now();
+    try {
+      const response = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          authorization: `Bearer ${this.botToken}`,
+        },
+        body: JSON.stringify({ channel: `#${input.channel.replace(/^#/, '')}`, text: input.body }),
+      });
+      // Slack answers 200 with ok:false for application errors, so the status
+      // code alone never proves a message landed.
+      const data = (await response.json()) as { ok?: boolean; error?: string; channel?: string };
+      if (!response.ok || data.ok !== true) {
+        const reason = data.error ?? `HTTP ${response.status}`;
+        const hint =
+          data.error === 'channel_not_found'
+            ? ` — no #${input.channel} in this workspace`
+            : data.error === 'not_in_channel'
+              ? ` — invite the app to #${input.channel}, or grant chat:write.public`
+              : '';
+        return fail(this.name, `Slack refused the message: ${reason}${hint}`, Date.now() - started);
+      }
+      return ok(
+        this.name,
+        `Posted to #${input.channel.replace(/^#/, '')}`,
+        { channel: data.channel },
+        Date.now() - started,
+      );
+    } catch (error) {
+      return fail(
+        this.name,
+        error instanceof Error ? error.message : 'Slack unreachable',
+        Date.now() - started,
+      );
+    }
+  }
+}

@@ -29,10 +29,19 @@ import { providerLabel } from '@/lib/llm/openrouter';
 import type { LiveUnderstanding, UnderstandingProvenance } from '@/lib/agents/understanding-live';
 import { planRun, applyOwnerOverride } from '@/lib/agents/ghost-runner';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
-import { DemoIssueTrackerAdapter, DemoMessagingAdapter, type FailurePoint } from '@/lib/adapters/demo';
-import { RemoteIssueTrackerAdapter, RemoteMessagingAdapter } from '@/lib/adapters/remote';
+import {
+  DemoCustomerMailAdapter,
+  DemoIssueTrackerAdapter,
+  DemoMessagingAdapter,
+  type FailurePoint,
+} from '@/lib/adapters/demo';
+import {
+  RemoteCustomerMailAdapter,
+  RemoteIssueTrackerAdapter,
+  RemoteMessagingAdapter,
+} from '@/lib/adapters/remote';
 import { startExtensionFeed } from './extension-feed';
-import { DEFAULT_CHANNEL, composeTeamMessage } from '@/lib/agents/compose';
+import { DEFAULT_CHANNEL, composeCustomerReply, composeTeamMessage } from '@/lib/agents/compose';
 import {
   BUG_FIXTURES,
   CHAT_CHANNELS,
@@ -71,6 +80,7 @@ export const OBSERVABLE_SEQUENCE: SemanticAction[] = [
   'chat.open_channel',
   'chat.compose_message',
   'chat.notify_team',
+  'mail.reply_customer',
 ];
 
 type Metrics = {
@@ -147,6 +157,8 @@ export type RepeatState = {
   chat: ChatMessage[];
   activeChannel: string;
   chatDraft: string;
+  /** The acknowledgement waiting to go back to the customer who wrote in. */
+  customerReplyDraft: string;
 
   timeline: TimelineEntry[];
   metrics: Metrics;
@@ -189,6 +201,7 @@ export type RepeatState = {
   openChannel: (channel: string) => void;
   draftTeamMessage: () => void;
   sendTeamMessage: () => void;
+  replyToCustomer: () => void;
 
   // ---- learning --------------------------------------------------------
   completeTrace: () => void;
@@ -234,7 +247,16 @@ function stamp(minutesAgo: number): string {
   return new Date(Date.now() - minutesAgo * 60_000).toISOString();
 }
 
+/**
+ * Seed data belongs to Demo Mode alone.
+ *
+ * In live mode every surface starts empty and fills from the real account:
+ * the inbox from connected Gmail, the board from the real tracker, the chat
+ * from whatever the run actually sends. Nothing invented is ever on screen
+ * next to something real — if the room sees a message, it arrived.
+ */
 function initialInbox(): MailMessage[] {
+  if (!DEMO_MODE) return [];
   return [
     { ...BUG_FIXTURES[0], receivedAt: stamp(3) },
     ...INBOX_NOISE.map((m, i) => ({ ...m, receivedAt: stamp(28 + i * 24) })),
@@ -242,10 +264,12 @@ function initialInbox(): MailMessage[] {
 }
 
 function initialIssues(): TrackerIssue[] {
+  if (!DEMO_MODE) return [];
   return SEED_ISSUES.map((issue, i) => ({ ...issue, createdAt: stamp(180 + i * 90) }));
 }
 
 function initialChat(): ChatMessage[] {
+  if (!DEMO_MODE) return [];
   return SEED_CHAT.map((m, i) => ({ ...m, at: stamp(95 + i * 40) }));
 }
 
@@ -522,6 +546,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
     chat: [],
     activeChannel: START_CHANNEL,
     chatDraft: '',
+    customerReplyDraft: '',
 
     timeline: [],
     metrics: initialMetrics,
@@ -608,6 +633,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
         chat: initialChat(),
         activeChannel: START_CHANNEL,
         chatDraft: '',
+        customerReplyDraft: '',
         timeline: [
           {
             id: makeId('tl'),
@@ -799,13 +825,24 @@ export const useRepeat = create<RepeatState>((set, get) => {
       // Pre-compute the notification the human is about to write.
       if (understanding) {
         const owner = composer.assignee || routeOwner(understanding.area).owner || 'unassigned';
-        set({ chatDraft: composeTeamMessage({ understanding, issueNumber: number, owner }) });
+        set({
+          chatDraft: composeTeamMessage({ understanding, issueNumber: number, owner }),
+          customerReplyDraft: composeCustomerReply({
+            understanding,
+            ticketRef: issue.key ?? `#${number}`,
+            owner,
+          }),
+        });
       }
     },
 
     openChannel: (channel) => {
       set({ activeChannel: channel });
-      if (channel === DEFAULT_CHANNEL) get().observe('chat.open_channel', { channel });
+      // Navigating to the desk that owns the issue is part of the workflow,
+      // whichever desk that turns out to be — so any move off the starting
+      // channel counts. Pinning this to one channel name stopped the step
+      // being observed at all once routing became per-department.
+      if (channel !== START_CHANNEL) get().observe('chat.open_channel', { channel });
     },
 
     draftTeamMessage: () => {
@@ -827,6 +864,26 @@ export const useRepeat = create<RepeatState>((set, get) => {
       };
       set({ chat: [...state.chat, message], chatDraft: '' });
       get().observe('chat.notify_team', { channel: state.activeChannel });
+    },
+
+    /**
+     * The last human step: answer the person who wrote in. Closing the loop
+     * with the customer is what turns a filed ticket into a handled
+     * complaint, and it is the step triage skips when it gets busy — so it
+     * is the one most worth REPEAT learning.
+     */
+    replyToCustomer: () => {
+      const state = get();
+      if (!state.customerReplyDraft) return;
+      const mail = state.inbox.find((m) => m.id === state.selectedMailId);
+      if (!mail) return;
+
+      set({ customerReplyDraft: '' });
+      get().observe('mail.reply_customer', {
+        customerEmail: mail.fromEmail,
+        customerName: mail.from,
+        messageId: mail.id,
+      });
       // The workflow is finished; hand over to the detector.
       get().completeTrace();
     },
@@ -1085,10 +1142,17 @@ export const useRepeat = create<RepeatState>((set, get) => {
         !DEMO_MODE && state.live?.messaging
           ? new RemoteMessagingAdapter({ failAt: state.failAt })
           : new DemoMessagingAdapter({ failAt: state.failAt });
+      // The reply goes out through connected Gmail, which is a mail-surface
+      // capability rather than a tracker one — so it follows mailSurface.
+      const mail =
+        !DEMO_MODE && state.mailSurface
+          ? new RemoteCustomerMailAdapter()
+          : new DemoCustomerMailAdapter({ failAt: state.failAt });
 
       const finished = await executeRun(approved, {
         tracker,
         messaging,
+        mail,
         stepDelayMs: TIMING.executeStep,
         onStep: (action, index) => {
           set((s) => ({

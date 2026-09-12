@@ -38,19 +38,14 @@ export const BUG_2: MailMessage = {
   from: 'Priya Raman',
   fromEmail: 'priya.raman@northwind.io',
   subject: 'Reports API timing out on every request',
-  body: `Hello support,
+  body: `Hello,
 
-Since yesterday evening every call to the reports endpoint times out
-after about 30 seconds and returns a 504. Smaller date ranges fail too,
-so it doesn't look like a data volume problem.
+Every call to the reports endpoint times out. We get an HTTP 504 after
+about thirty seconds, on every request, since yesterday afternoon.
 
-Our nightly export job depends on this endpoint and it has now failed
-twice in a row.
+This is blocking our nightly export job.
 
-Please advise.
-
-Priya
-Northwind Analytics`,
+Priya`,
   receivedAt: '',
   read: false,
   fixtureRef: 'bug-2-timeout',
@@ -59,42 +54,31 @@ Northwind Analytics`,
 export const BUG_3: MailMessage = {
   id: 'mail_bug_3',
   from: 'Daniel Okafor',
-  fromEmail: 'daniel.okafor@brightloop.co',
-  subject: 'Navigation bar is broken on mobile',
+  fromEmail: 'daniel.okafor@brightlane.co',
+  subject: 'Charged twice for my subscription this month',
   body: `Hi,
 
-On my phone the top navigation bar overlaps the page heading and the menu
-button does nothing when tapped. The dropdown renders off screen, so I
-can't reach Settings at all.
+I have been billed twice for my subscription this month. There are two
+identical payments on my card three days apart, and only one invoice in
+my account.
 
-It looks fine on desktop Chrome - only the mobile layout is affected.
-
-Screenshot attached.
+Could you refund the duplicate charge?
 
 Daniel`,
   receivedAt: '',
   read: false,
-  fixtureRef: 'bug-3-navbar',
+  fixtureRef: 'bug-3-billing',
 };
 
-/**
- * A deliberately ambiguous report. Nothing in it identifies an engineering
- * area, so the classifier cannot route it confidently and the Ghost Run must
- * stop and ask. Kept out of the main sequence and reachable from the demo
- * console, because a product that can only demo its happy path is not one.
- */
 export const BUG_4_AMBIGUOUS: MailMessage = {
   id: 'mail_bug_4',
   from: 'Mara Feld',
-  fromEmail: 'mara@lighthouse-partners.com',
+  fromEmail: 'mara.feld@lumenworks.com',
   subject: 'Something went wrong yesterday',
-  body: `Hi,
+  body: `Hey,
 
-Yesterday afternoon a few things did not behave the way we expected while we
-were preparing the quarterly pack. It sorted itself out later but my colleague
-saw it too, so I wanted to flag it.
-
-Happy to jump on a call if that is easier.
+Something was off yesterday afternoon. It seemed to sort itself out but
+I wanted to flag it in case it matters.
 
 Mara`,
   receivedAt: '',
@@ -102,7 +86,6 @@ Mara`,
   fixtureRef: 'bug-4-ambiguous',
 };
 
-/** Ordered: two training observations, then the generalization test. */
 export const BUG_FIXTURES = [BUG_1, BUG_2, BUG_3, BUG_4_AMBIGUOUS];
 
 /**
@@ -221,14 +204,21 @@ export const SEED_CHAT: ChatMessage[] = [
 ];
 
 /** Where the user happens to be when the demo starts. */
-export const START_CHANNEL = 'engineering';
+export const START_CHANNEL = 'all-repeat-co';
 
+/**
+ * The desks REPEAT can announce into. These mirror the real Slack channels
+ * one-for-one — see DEFAULT_AREA_CHANNELS in lib/demo/team.ts — so the window
+ * on screen is the workspace the notification actually lands in.
+ */
 export const CHAT_CHANNELS = [
-  { name: 'product-updates', unread: 2, active: false },
-  { name: 'engineering', unread: 0, active: true },
-  { name: 'support', unread: 5, active: false },
-  { name: 'bugs', unread: 1, active: false },
-  { name: 'releases', unread: 0, active: false },
+  { name: 'all-repeat-co', unread: 0, active: true },
+  { name: 'billing-finance', unread: 0, active: false },
+  { name: 'technical-support', unread: 0, active: false },
+  { name: 'sales-accounts', unread: 0, active: false },
+  { name: 'logistics-shipping', unread: 0, active: false },
+  { name: 'product-rnd', unread: 0, active: false },
+  { name: 'legal-compliance', unread: 0, active: false },
 ];
 
 export const TRACKER_PROJECT = {

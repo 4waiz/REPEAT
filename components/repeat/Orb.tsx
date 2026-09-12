@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { OrbState } from '@/types';
 import { cn } from '@/lib/utils';
@@ -228,16 +229,43 @@ export function RepeatMark({
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }) {
-  const orbSize = size === 'lg' ? 44 : size === 'sm' ? 24 : 32;
+  const markSize = size === 'lg' ? 44 : size === 'sm' ? 24 : 32;
   const text =
     size === 'lg'
       ? 'text-[1.6rem] tracking-[0.3em]'
       : size === 'sm'
         ? 'text-xs tracking-[0.24em]'
         : 'text-[0.95rem] tracking-[0.26em]';
+
+  // The logo replaces the drawn orb in the lockup, but the agent's state is
+  // still worth seeing at a glance — so it drives the glow behind the mark
+  // rather than being dropped. The live Orb still runs in the dock.
+  const halo = ORB_PALETTE[state].halo;
+  const resting = state === 'idle';
+
   return (
     <span className={cn('inline-flex items-center gap-3', className)}>
-      <Orb state={state} size={orbSize} />
+      <motion.span
+        className="relative inline-flex shrink-0 items-center justify-center"
+        style={{ width: markSize, height: markSize }}
+        animate={
+          resting
+            ? { filter: `drop-shadow(0 0 4px ${halo})` }
+            : { filter: [`drop-shadow(0 0 5px ${halo})`, `drop-shadow(0 0 13px ${halo})`, `drop-shadow(0 0 5px ${halo})`] }
+        }
+        transition={
+          resting ? { duration: 0.5 } : { duration: 2.6, repeat: Infinity, ease: 'easeInOut' }
+        }
+      >
+        <Image
+          src="/logo.png"
+          alt=""
+          width={markSize}
+          height={markSize}
+          priority
+          className="h-full w-full object-contain"
+        />
+      </motion.span>
       <span className={cn('font-semibold text-mist-50', text)}>REPEAT</span>
     </span>
   );

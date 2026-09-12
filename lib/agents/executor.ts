@@ -89,6 +89,15 @@ async function performAction(
         }),
       );
 
+    case 'mail.reply_customer':
+      return withTiming(
+        await adapters.mail.replyToCustomer({
+          messageId: String(action.resolvedParams.messageId ?? ''),
+          customerEmail: String(action.resolvedParams.customerEmail ?? ''),
+          body: String(action.resolvedParams.replyBody ?? ''),
+        }),
+      );
+
     default:
       return withTiming(ok('local', 'No-op'));
   }

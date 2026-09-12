@@ -1,20 +1,22 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { CircleDot, ClipboardPaste, ExternalLink, GitPullRequestArrow, Plus, Tag } from 'lucide-react';
+import { ClipboardPaste, ExternalLink, Flag, Plus } from 'lucide-react';
 import type { IssueSeverity } from '@/types';
 import { useRepeat, selectNextAction } from '@/lib/store/repeat-store';
 import { TEAM } from '@/lib/demo/team';
 import { TRACKER_PROJECT } from '@/lib/demo/fixtures';
-import { Field, GuideRing, WindowFrame } from './chrome';
+import { Avatar, Field, GuideRing, WindowFrame } from './chrome';
 import { cn } from '@/lib/utils';
 
 /**
- * Replica issue tracker.
+ * The issue-tracker surface, wearing ClickUp's dark theme.
  *
- * The composer is where most of the manual cost of triage actually sits, so
- * the human's clicks here are the bulk of the observed workflow: paste,
- * label, prioritise, assign, submit.
+ * In live mode these are real tasks in a real ClickUp list, so the board is
+ * styled as ClickUp: status dots, priority flags, tag pills, assignee
+ * avatars. The composer is where most of the manual cost of triage actually
+ * sits, so the human's clicks here are the bulk of the observed workflow:
+ * paste, label, prioritise, assign, submit.
  */
 
 const LABEL_CHOICES = ['bug', 'authentication', 'performance', 'ui', 'data', 'frontend', 'backend'];
@@ -24,14 +26,18 @@ function isRealUrl(url: string | undefined): url is string {
 }
 const PRIORITIES: IssueSeverity[] = ['low', 'medium', 'high', 'critical'];
 
-const PRIORITY_TONE: Record<IssueSeverity, string> = {
-  low: 'border-edge-soft bg-white/[0.04] text-mist-400',
-  medium: 'border-cyan-400/30 bg-cyan-400/10 text-cyan-300',
-  high: 'border-amber-400/30 bg-amber-400/10 text-amber-300',
-  critical: 'border-rose-400/30 bg-rose-400/10 text-rose-300',
+/** ClickUp shows priority as a coloured flag, not a coloured word. */
+const PRIORITY_FLAG: Record<IssueSeverity, string> = {
+  low: '#b5bcc9',
+  medium: '#6fddff',
+  high: '#ffcc00',
+  critical: '#f50000',
 };
 
 const PROVIDER_LABEL: Record<string, string> = { clickup: 'ClickUp', jira: 'Jira' };
+
+const PURPLE = '#7b68ee';
+const LINE = 'rgba(255,255,255,0.07)';
 
 export function TrackerWindow() {
   const composer = useRepeat((s) => s.composer);
@@ -46,8 +52,10 @@ export function TrackerWindow() {
 
   // Live mode shows the real board; the replica project name is Demo Mode's.
   const board = surfaces?.trackers.find((t) => t.provider === trackerView) ?? null;
-  const title = board ? board.target.replace(/^ClickUp list \d+$/, 'ClickUp') : liveTarget ?? TRACKER_PROJECT.label;
-  const subtitle = board ? `${PROVIDER_LABEL[board.provider] ?? board.provider} · live` : 'Issues';
+  const listName = board
+    ? board.target.replace(/^ClickUp list \d+$/, 'Support triage')
+    : (liveTarget ?? TRACKER_PROJECT.label);
+  const subtitle = board ? `${PROVIDER_LABEL[board.provider] ?? board.provider} · live` : 'Tasks';
 
   const openComposer = useRepeat((s) => s.openComposer);
   const paste = useRepeat((s) => s.pasteIntoComposer);
@@ -57,33 +65,42 @@ export function TrackerWindow() {
   const submitIssue = useRepeat((s) => s.submitIssue);
 
   const canSubmit = Boolean(composer.title && composer.labels.length && composer.priority);
+  const openCount = issues.filter((i) => i.state === 'open').length;
 
   return (
     <WindowFrame
-      title={title}
+      title={board ? PROVIDER_LABEL[board.provider] ?? 'ClickUp' : 'ClickUp'}
       subtitle={subtitle}
-      icon={<GitPullRequestArrow />}
-      accent="#8b7cff"
+      brand="clickup"
       observed
       className="min-w-0"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge-faint px-3 py-2">
-          <span className="flex min-w-0 items-center gap-1.5 text-2xs uppercase tracking-[0.12em] text-mist-500">
-            <CircleDot className="h-3 w-3 shrink-0" />
-            {issues.filter((i) => i.state === 'open').length} open
+        {/* list header */}
+        <div
+          className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2"
+          style={{ borderColor: LINE }}
+        >
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-xs font-semibold text-mist-100">{listName}</span>
+            <span className="shrink-0 rounded bg-white/[0.08] px-1.5 text-3xs font-medium text-mist-400">
+              {openCount}
+            </span>
             {/* Two real boards: switch between them. One: link out to it. */}
             {surfaces && surfaces.trackers.length > 1 ? (
-              <span className="ml-2 flex items-center gap-1 normal-case tracking-normal">
+              <span className="ml-1 flex items-center gap-1">
                 {surfaces.trackers.map((t) => (
                   <button
                     key={t.provider}
                     onClick={() => setTrackerView(t.provider)}
+                    style={
+                      t.provider === trackerView
+                        ? { background: `${PURPLE}26`, borderColor: `${PURPLE}66`, color: '#c3b8ff' }
+                        : undefined
+                    }
                     className={cn(
                       'rounded border px-1.5 py-px text-3xs transition',
-                      t.provider === trackerView
-                        ? 'border-iris-400/40 bg-iris-400/15 text-iris-200'
-                        : 'border-edge-faint text-mist-500 hover:text-mist-200',
+                      t.provider !== trackerView && 'border-white/10 text-mist-500 hover:text-mist-200',
                     )}
                   >
                     {PROVIDER_LABEL[t.provider] ?? t.provider}
@@ -96,7 +113,7 @@ export function TrackerWindow() {
                 href={board.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="ml-1 inline-flex items-center gap-1 normal-case tracking-normal text-mist-500 hover:text-mist-200"
+                className="ml-0.5 inline-flex shrink-0 items-center text-mist-500 hover:text-mist-200"
                 title="Open the real board"
               >
                 <ExternalLink className="h-2.5 w-2.5" />
@@ -104,13 +121,14 @@ export function TrackerWindow() {
             ) : null}
           </span>
           {!composer.open ? (
-            <GuideRing active={guideOn && next === 'tracker.open_composer'} radius="rounded-md">
+            <GuideRing active={guideOn && next === 'tracker.open_composer'} radius="rounded">
               <button
                 onClick={openComposer}
-                className="inline-flex h-6 items-center gap-1 rounded-md bg-iris-400/15 px-2 text-2xs font-medium uppercase tracking-[0.1em] text-iris-300 transition hover:bg-iris-400/25"
+                style={{ background: PURPLE }}
+                className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-2 text-2xs font-semibold text-white transition hover:brightness-110"
               >
                 <Plus className="h-3 w-3" />
-                New issue
+                Task
               </button>
             </GuideRing>
           ) : null}
@@ -125,19 +143,19 @@ export function TrackerWindow() {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-                className="overflow-hidden border-b border-edge-faint bg-ink-850/60"
+                className="overflow-hidden border-b bg-white/[0.02]"
+                style={{ borderColor: LINE }}
               >
                 <div className="px-3 py-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <span className="eyebrow">Create issue</span>
+                    <span className="text-2xs font-semibold uppercase tracking-[0.16em] text-mist-500">
+                      New task
+                    </span>
                     {clipboard && !composer.title ? (
-                      <GuideRing
-                        active={guideOn && next === 'tracker.compose_issue'}
-                        radius="rounded-md"
-                      >
+                      <GuideRing active={guideOn && next === 'tracker.compose_issue'} radius="rounded">
                         <button
                           onClick={paste}
-                          className="inline-flex h-6 items-center gap-1 rounded-md border border-edge bg-ink-800/70 px-2 text-2xs text-mist-200 transition hover:border-edge-strong"
+                          className="inline-flex h-6 items-center gap-1 rounded border border-white/15 bg-white/[0.05] px-2 text-2xs text-mist-200 transition hover:bg-white/[0.09]"
                         >
                           <ClipboardPaste className="h-3 w-3" />
                           Paste report
@@ -146,16 +164,16 @@ export function TrackerWindow() {
                     ) : null}
                   </div>
 
-                  <Field label="Title" filled={Boolean(composer.title)}>
+                  <Field label="Name" filled={Boolean(composer.title)}>
                     <div
                       className={cn(
-                        'min-h-[28px] rounded-md border px-2 py-1.5 text-xs leading-snug',
+                        'min-h-[28px] rounded border px-2 py-1.5 text-xs leading-snug',
                         composer.title
-                          ? 'border-edge-soft bg-white/[0.03] text-mist-100'
-                          : 'border-dashed border-edge-soft text-mist-600',
+                          ? 'border-white/10 bg-white/[0.04] text-mist-100'
+                          : 'border-dashed border-white/10 text-mist-600',
                       )}
                     >
-                      {composer.title || 'Paste the report to fill the ticket'}
+                      {composer.title || 'Paste the report to fill the task'}
                       {!composer.title ? (
                         <span className="ml-0.5 inline-block h-3 w-[1px] animate-caret-blink bg-cyan-400 align-middle" />
                       ) : null}
@@ -165,17 +183,17 @@ export function TrackerWindow() {
                   <Field label="Description" filled={Boolean(composer.body)}>
                     <div
                       className={cn(
-                        'max-h-[3.6rem] overflow-y-auto whitespace-pre-line rounded-md border px-2 py-1.5 text-[0.6875rem] leading-relaxed',
+                        'max-h-[3.6rem] overflow-y-auto whitespace-pre-line rounded border px-2 py-1.5 text-[0.6875rem] leading-relaxed',
                         composer.body
-                          ? 'border-edge-soft bg-white/[0.03] text-mist-300'
-                          : 'border-dashed border-edge-soft text-mist-600',
+                          ? 'border-white/10 bg-white/[0.04] text-mist-300'
+                          : 'border-dashed border-white/10 text-mist-600',
                       )}
                     >
                       {composer.body || '—'}
                     </div>
                   </Field>
 
-                  <Field label="Labels" filled={composer.labels.length > 0}>
+                  <Field label="Tags" filled={composer.labels.length > 0}>
                     <GuideRing active={guideOn && next === 'tracker.apply_labels'}>
                       <div className="flex flex-wrap gap-1">
                         {LABEL_CHOICES.map((label) => {
@@ -184,14 +202,16 @@ export function TrackerWindow() {
                             <button
                               key={label}
                               onClick={() => toggleLabel(label)}
-                              className={cn(
-                                'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs transition-colors',
+                              style={
                                 on
-                                  ? 'border-iris-400/40 bg-iris-400/15 text-iris-200'
-                                  : 'border-edge-faint text-mist-500 hover:border-edge hover:text-mist-300',
+                                  ? { background: `${PURPLE}26`, borderColor: `${PURPLE}66`, color: '#c3b8ff' }
+                                  : undefined
+                              }
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs transition-colors',
+                                !on && 'border-white/10 text-mist-500 hover:border-white/20 hover:text-mist-300',
                               )}
                             >
-                              {on ? <Tag className="h-2.5 w-2.5" /> : null}
                               {label}
                             </button>
                           );
@@ -203,20 +223,29 @@ export function TrackerWindow() {
                   <Field label="Priority" filled={Boolean(composer.priority)}>
                     <GuideRing active={guideOn && next === 'tracker.set_priority'}>
                       <div className="flex gap-1">
-                        {PRIORITIES.map((p) => (
-                          <button
-                            key={p}
-                            onClick={() => setPriority(p)}
-                            className={cn(
-                              'rounded border px-1.5 py-0.5 text-2xs uppercase tracking-[0.08em] transition-colors',
-                              composer.priority === p
-                                ? PRIORITY_TONE[p]
-                                : 'border-edge-faint text-mist-500 hover:border-edge hover:text-mist-300',
-                            )}
-                          >
-                            {p}
-                          </button>
-                        ))}
+                        {PRIORITIES.map((p) => {
+                          const on = composer.priority === p;
+                          return (
+                            <button
+                              key={p}
+                              onClick={() => setPriority(p)}
+                              style={on ? { borderColor: `${PRIORITY_FLAG[p]}80` } : undefined}
+                              className={cn(
+                                'inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs capitalize transition-colors',
+                                on
+                                  ? 'bg-white/[0.06] text-mist-100'
+                                  : 'border-white/10 text-mist-500 hover:border-white/20 hover:text-mist-300',
+                              )}
+                            >
+                              <Flag
+                                className="h-2.5 w-2.5"
+                                style={{ color: PRIORITY_FLAG[p] }}
+                                fill={on ? PRIORITY_FLAG[p] : 'transparent'}
+                              />
+                              {p}
+                            </button>
+                          );
+                        })}
                       </div>
                     </GuideRing>
                   </Field>
@@ -229,17 +258,14 @@ export function TrackerWindow() {
                             key={m.id}
                             onClick={() => setAssignee(m.name)}
                             className={cn(
-                              'inline-flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-2xs transition-colors',
+                              'inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-0.5 pr-2 text-2xs transition-colors',
                               composer.assignee === m.name
-                                ? 'border-cyan-400/40 bg-cyan-400/12 text-cyan-200'
-                                : 'border-edge-faint text-mist-500 hover:border-edge hover:text-mist-300',
+                                ? 'border-white/25 bg-white/[0.08] text-mist-100'
+                                : 'border-white/10 text-mist-500 hover:border-white/20 hover:text-mist-300',
                             )}
                             title={`${m.name} — ${m.role}`}
                           >
-                            <span
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ background: m.accent }}
-                            />
+                            <Avatar name={m.name} size={14} />
                             {m.name}
                           </button>
                         ))}
@@ -250,19 +276,20 @@ export function TrackerWindow() {
                   <div className="mt-2.5 flex items-center gap-2">
                     <GuideRing
                       active={guideOn && next === 'tracker.create_issue' && canSubmit}
-                      radius="rounded-md"
+                      radius="rounded"
                     >
                       <button
                         onClick={submitIssue}
                         disabled={!canSubmit}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-md bg-teal-400 px-3 text-xs font-semibold text-ink-950 transition hover:bg-teal-300 disabled:pointer-events-none disabled:opacity-35"
+                        style={{ background: canSubmit ? PURPLE : undefined }}
+                        className="inline-flex h-7 items-center gap-1.5 rounded px-3 text-xs font-semibold text-white transition hover:brightness-110 disabled:pointer-events-none disabled:bg-white/10 disabled:opacity-50"
                       >
-                        Create issue
+                        Create task
                       </button>
                     </GuideRing>
                     {!canSubmit ? (
                       <span className="text-3xs text-mist-600">
-                        Needs a title, labels and a priority
+                        Needs a name, tags and a priority
                       </span>
                     ) : null}
                   </div>
@@ -279,18 +306,34 @@ export function TrackerWindow() {
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                style={{ borderColor: LINE }}
                 className={cn(
-                  'border-b border-edge-faint px-3 py-2.5',
+                  'border-b px-3 py-2.5',
                   issue.createdBy === 'repeat' && 'bg-cyan-400/[0.045]',
                 )}
               >
                 <div className="flex items-start gap-2">
-                  <CircleDot className="mt-0.5 h-3 w-3 shrink-0 text-teal-400" />
+                  {/* ClickUp's status is a ring, filled once complete */}
+                  <span
+                    className="mt-0.5 h-3 w-3 shrink-0 rounded-full border-2"
+                    style={{
+                      borderColor: issue.state === 'open' ? '#87909e' : '#2ecd6f',
+                      background: issue.state === 'open' ? 'transparent' : '#2ecd6f',
+                    }}
+                  />
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="truncate text-xs font-medium text-mist-100">
+                    <div className="flex items-start gap-2">
+                      <span className="min-w-0 flex-1 truncate text-xs font-medium text-mist-100">
                         {issue.title}
                       </span>
+                      <Flag
+                        className="mt-px h-3 w-3 shrink-0"
+                        style={{ color: PRIORITY_FLAG[issue.priority] }}
+                        fill={PRIORITY_FLAG[issue.priority]}
+                      />
+                      {issue.assignee ? (
+                        <Avatar name={issue.assignee} size={16} className="mt-px" />
+                      ) : null}
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
                       <span className="font-mono text-3xs text-mist-600">
@@ -299,24 +342,11 @@ export function TrackerWindow() {
                       {issue.labels.map((l) => (
                         <span
                           key={l}
-                          className="rounded border border-edge-faint px-1 py-px text-3xs text-mist-500"
+                          className="rounded-full border border-white/10 px-1.5 py-px text-3xs text-mist-500"
                         >
                           {l}
                         </span>
                       ))}
-                      <span
-                        className={cn(
-                          'rounded border px-1 py-px text-3xs uppercase tracking-[0.08em]',
-                          PRIORITY_TONE[issue.priority],
-                        )}
-                      >
-                        {issue.priority}
-                      </span>
-                      {issue.assignee ? (
-                        <span className="ml-auto shrink-0 text-3xs text-mist-400">
-                          {issue.assignee}
-                        </span>
-                      ) : null}
                     </div>
                     {issue.createdBy === 'repeat' || isRealUrl(issue.url) ? (
                       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -331,7 +361,7 @@ export function TrackerWindow() {
                             href={issue.url}
                             target="_blank"
                             rel="noreferrer noopener"
-                            className="inline-flex items-center gap-1 text-3xs text-teal-300 hover:text-teal-200"
+                            className="inline-flex items-center gap-1 text-3xs text-[#a99bff] hover:text-[#c3b8ff]"
                           >
                             open in {PROVIDER_LABEL[issue.provider ?? ''] ?? 'tracker'}
                             <ExternalLink className="h-2.5 w-2.5" />

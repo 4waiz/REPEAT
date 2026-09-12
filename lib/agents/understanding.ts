@@ -29,7 +29,14 @@ import { clamp, unique } from '@/lib/utils';
 /* Schema — the contract both paths must satisfy                            */
 /* ------------------------------------------------------------------------ */
 
-export const AREAS = ['frontend', 'backend', 'ai-data', 'research', 'operations'] as const;
+export const AREAS = [
+  'billing',
+  'technical-support',
+  'sales',
+  'logistics',
+  'product-rnd',
+  'legal-compliance',
+] as const;
 export const CATEGORIES = [
   'authentication',
   'performance',
@@ -72,7 +79,7 @@ type Signal = { pattern: RegExp; weight: number; phrase: string };
  * incidental mention of a screen, or bug #1 would be misfiled as frontend.
  */
 const AREA_SIGNALS: Record<EngineeringArea, Signal[]> = {
-  backend: [
+  'technical-support': [
     { pattern: /invalid credentials/i, weight: 5, phrase: 'invalid credentials' },
     { pattern: /\blog ?(in|ging in)\b|\bsign ?in\b/i, weight: 4, phrase: 'login' },
     { pattern: /\bpassword\b/i, weight: 3, phrase: 'password' },
@@ -83,31 +90,35 @@ const AREA_SIGNALS: Record<EngineeringArea, Signal[]> = {
     { pattern: /\b(server|database|query|migration|webhook)\b/i, weight: 3, phrase: 'server-side component' },
     { pattern: /\bexport job|nightly job|cron\b/i, weight: 2, phrase: 'scheduled job' },
   ],
-  frontend: [
-    { pattern: /\bnav(?:igation)? ?bar\b|\bnavbar\b/i, weight: 5, phrase: 'navigation bar' },
-    { pattern: /\boverlaps?\b|\bcut off\b|\boff ?screen\b/i, weight: 4, phrase: 'layout overlap' },
-    { pattern: /\bmobile\b|\bphone\b|\bresponsive\b|\bviewport\b/i, weight: 4, phrase: 'mobile layout' },
-    { pattern: /\b(dropdown|modal|menu button|tooltip|sidebar)\b/i, weight: 3, phrase: 'ui control' },
-    { pattern: /\b(css|layout|styling|alignment|z-index)\b/i, weight: 3, phrase: 'styling' },
-    { pattern: /\btapp?(ed|ing)?\b|\bclicking\b|\bdoes nothing when\b/i, weight: 3, phrase: 'unresponsive control' },
-    { pattern: /\b(renders?|rendering)\b/i, weight: 2, phrase: 'rendering' },
-    { pattern: /\b(chrome|safari|firefox|browser)\b/i, weight: 2, phrase: 'browser-specific' },
+  billing: [
+    { pattern: /\b(invoice|billing|billed|payment|refund|charge[ds]?)\b/i, weight: 5, phrase: 'billing' },
+    { pattern: /\b(double[- ]charged|overcharged|charged twice)\b/i, weight: 6, phrase: 'duplicate charge' },
+    { pattern: /\b(subscription|renewal|receipt|vat|tax)\b/i, weight: 4, phrase: 'subscription or receipt' },
+    { pattern: /\b(card|debit|credit card|declined)\b/i, weight: 3, phrase: 'payment method' },
   ],
-  'ai-data': [
-    { pattern: /\b(model|prediction|inference|embedding)\b/i, weight: 5, phrase: 'model behaviour' },
-    { pattern: /\b(training|dataset|feature store|retrain)\b/i, weight: 4, phrase: 'training data' },
-    { pattern: /\b(recommendation|ranking|score)s?\b/i, weight: 3, phrase: 'ranking output' },
-    { pattern: /\bduplicate rows?\b|\bdata quality\b/i, weight: 3, phrase: 'data quality' },
+  sales: [
+    { pattern: /\b(quote|quotation|pricing|price list)\b/i, weight: 5, phrase: 'pricing request' },
+    { pattern: /\b(demo|trial|upgrade|downgrade|enterprise plan)\b/i, weight: 4, phrase: 'plan change' },
+    { pattern: /\b(contract|renewal terms|account manager|procurement)\b/i, weight: 4, phrase: 'commercial terms' },
+    { pattern: /\b(seats?|licen[cs]es?|additional users?)\b/i, weight: 3, phrase: 'seat expansion' },
   ],
-  research: [
-    { pattern: /\b(documentation|docs|spec|specification)\b/i, weight: 4, phrase: 'documentation' },
-    { pattern: /\b(unclear|ambiguous|cannot reproduce|can't reproduce)\b/i, weight: 4, phrase: 'needs verification' },
-    { pattern: /\bhow do i\b|\bis it expected\b/i, weight: 3, phrase: 'clarification request' },
+  logistics: [
+    { pattern: /\b(order|shipment|delivery|delivered)\b/i, weight: 5, phrase: 'order or delivery' },
+    { pattern: /\b(tracking (number|link)|courier|dispatch|warehouse)\b/i, weight: 5, phrase: 'shipment tracking' },
+    { pattern: /\b(package|parcel|damaged in transit|never arrived|lost in transit)\b/i, weight: 4, phrase: 'parcel problem' },
+    { pattern: /\b(return|rma|exchange|shipping address)\b/i, weight: 3, phrase: 'returns' },
   ],
-  operations: [
-    { pattern: /\b(invoice|billing|payment|refund|subscription|plan)\b/i, weight: 5, phrase: 'billing' },
-    { pattern: /\b(seat|licence|license|quota)\b/i, weight: 3, phrase: 'account limits' },
-    { pattern: /\b(onboard|provision|access request)\b/i, weight: 3, phrase: 'provisioning' },
+  'product-rnd': [
+    { pattern: /\b(feature request|roadmap|enhancement)\b/i, weight: 5, phrase: 'feature request' },
+    { pattern: /\b(would be (great|nice|helpful) if|please add|any plans to)\b/i, weight: 4, phrase: 'product suggestion' },
+    { pattern: /\b(missing feature|not supported yet|wish ?list)\b/i, weight: 4, phrase: 'capability gap' },
+    { pattern: /\b(integration with|support for)\b/i, weight: 3, phrase: 'integration request' },
+  ],
+  'legal-compliance': [
+    { pattern: /\b(gdpr|ccpa|dpa|data protection)\b/i, weight: 6, phrase: 'data protection law' },
+    { pattern: /\b(privacy|personal data|right to be forgotten|erasure)\b/i, weight: 5, phrase: 'privacy request' },
+    { pattern: /\b(delete my (data|account)|data deletion|consent)\b/i, weight: 5, phrase: 'deletion or consent' },
+    { pattern: /\b(terms of service|compliance|audit|legal)\b/i, weight: 4, phrase: 'legal or compliance' },
   ],
   unresolved: [],
 };
@@ -282,7 +293,7 @@ export function understandDeterministic(message: MailMessage): IssueUnderstandin
   const all = sentences(message.body);
   // Keep the two most symptom-dense sentences; they carry the actual report.
   const ranked = all
-    .map((s) => ({ s, score: scoreSignals(s, AREA_SIGNALS[area === 'unresolved' ? 'backend' : area]).score }))
+    .map((s) => ({ s, score: scoreSignals(s, AREA_SIGNALS[area === 'unresolved' ? 'technical-support' : area]).score }))
     .sort((a, b) => b.score - a.score);
   const picked = unique([...(ranked[0] ? [ranked[0].s] : []), ...(ranked[1] ? [ranked[1].s] : [])]);
   const issueTitle = buildTitle(message, evidenceQuote);
@@ -334,14 +345,14 @@ Return ONLY a JSON object with these keys:
   issueTitle        string  - a short engineering ticket title, no customer voice
   issueDescription  string  - 2-4 lines: who reported it, the symptom, the impact
   category          one of: authentication | performance | ui | data | integration | unknown
-  area              one of: frontend | backend | ai-data | research | operations | unresolved
+  area              one of: billing | technical-support | sales | logistics | product-rnd | legal-compliance | unresolved
   severity          one of: low | medium | high | critical
   labels            array of 1-2 short lowercase labels specific to this report (the team's bug/category/area labels are added automatically)
   evidence          array of 1-5 SHORT literal phrases quoted from the report that justify the classification
   confidence        number between 0 and 1
 
 Rules:
-- "area" is the engineering area that owns the fix, not where the user noticed it.
+- "area" is the department that owns the response, not where the customer noticed the problem.
   frontend = layout, rendering, browser or mobile UI; backend = auth, APIs, timeouts, server errors;
   ai-data = models, predictions, training data; research = documentation or unclear specs;
   operations = billing, seats, provisioning.
@@ -465,11 +476,12 @@ export const CATEGORY_DISPLAY: Record<IssueCategory, string> = {
 };
 
 export const AREA_DISPLAY: Record<EngineeringArea, string> = {
-  frontend: 'Frontend',
-  backend: 'Backend',
-  'ai-data': 'AI / Data',
-  research: 'Research',
-  operations: 'Operations',
+  billing: 'Billing & Finance',
+  'technical-support': 'Technical Support',
+  sales: 'Sales & Accounts',
+  logistics: 'Logistics & Shipping',
+  'product-rnd': 'Product & R&D',
+  'legal-compliance': 'Legal & Compliance',
   unresolved: 'Unresolved',
 };
 

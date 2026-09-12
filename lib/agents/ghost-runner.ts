@@ -12,8 +12,14 @@ import { normalize } from '@/lib/events/normalizer';
 import { APPROVAL_SECONDS } from '@/lib/events/taxonomy';
 import { assessRisk, decide } from '@/lib/policy/policy';
 import { OWNER_CONFIDENCE_FLOOR } from '@/lib/demo/config';
-import { routeOwner } from '@/lib/demo/team';
-import { DEFAULT_CHANNEL, composeIssueBody, composeTeamMessage } from '@/lib/agents/compose';
+import { channelFor, routeOwner } from '@/lib/demo/team';
+import {
+  DEFAULT_CHANNEL,
+  composeCustomerReply,
+  composeIssueBody,
+  composeTeamMessage,
+  departmentFor,
+} from '@/lib/agents/compose';
 import { CATEGORY_DISPLAY } from '@/lib/agents/understanding';
 import { makeId, unique } from '@/lib/utils';
 
@@ -49,8 +55,11 @@ export function resolveVariables(
     labels: understanding.labels,
     owner: owner ?? '',
     issueNumber,
-    // Authored constants come from the compiled pattern, not from the trigger.
+    // The audience is resolved from the classified area, the same way the
+    // owner is — a compliance report and a frontend bug are not announced to
+    // the same desk. Falls back to whatever the pattern observed.
     channel:
+      channelFor(understanding.area) ??
       (pattern.steps.find((s) => s.id === 'step_notify')?.params.channel as string) ??
       DEFAULT_CHANNEL,
   };
@@ -133,12 +142,13 @@ type PlanRow = {
 };
 
 /**
- * Expand the five compiled steps into the concrete rows the Ghost Run shows.
+ * Expand the compiled steps into the concrete rows the Ghost Run shows.
  * Steps are the skeleton; these are the operations.
  */
 function buildPlanRows(
   understanding: IssueUnderstanding,
   values: Record<string, unknown>,
+  messageId: string,
 ): PlanRow[] {
   const labels = (values.labels as string[]) ?? [];
   const references = understanding.references?.length ?? 0;
@@ -224,6 +234,26 @@ function buildPlanRows(
       params: { channel: values.channel, teamMessage: values.teamMessage },
       permission: 'send_message',
     },
+    {
+      action: 'mail.reply_customer',
+      stepId: 'step_reply',
+      title: 'Reply to customer',
+      detail: `Acknowledge ${understanding.customerName} · ${departmentFor(understanding.area)}`,
+      params: {
+        customerEmail: values.customerEmail,
+        customerName: values.customerName,
+        owner: values.owner,
+        area: values.area,
+        issueNumber: values.issueNumber,
+        messageId,
+        replyBody: composeCustomerReply({
+          understanding,
+          ticketRef: `#${values.issueNumber}`,
+          owner: (values.owner as string | null) ?? null,
+        }),
+      },
+      permission: 'send_message',
+    },
   ];
 }
 
@@ -239,7 +269,7 @@ export function planRun(
 ): AgentRun {
   const { values, owner, ownerRule } = resolveVariables(pattern, understanding, issueNumber);
   const adaptations = detectAdaptations(pattern, values, ownerRule);
-  const rows = buildPlanRows(understanding, values);
+  const rows = buildPlanRows(understanding, values, message.id);
 
   const ownerResolved = Boolean(owner) && understanding.confidence >= OWNER_CONFIDENCE_FLOOR;
 

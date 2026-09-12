@@ -38,7 +38,9 @@ export type SemanticAction =
   // team chat
   | 'chat.open_channel'
   | 'chat.compose_message'
-  | 'chat.notify_team';
+  | 'chat.notify_team'
+  // closing the loop with the person who wrote in
+  | 'mail.reply_customer';
 
 /** How an event entered the system. Drives the icon in the Live Timeline. */
 export type EventOrigin = 'observed' | 'executed';
@@ -102,11 +104,12 @@ export type IssueSeverity = 'low' | 'medium' | 'high' | 'critical';
 
 /** The engineering area a bug belongs to. Drives owner routing. */
 export type EngineeringArea =
-  | 'frontend'
-  | 'backend'
-  | 'ai-data'
-  | 'research'
-  | 'operations'
+  | 'billing'
+  | 'technical-support'
+  | 'sales'
+  | 'logistics'
+  | 'product-rnd'
+  | 'legal-compliance'
   | 'unresolved';
 
 /**

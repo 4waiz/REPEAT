@@ -4,6 +4,7 @@ import { makeId } from '@/lib/utils';
 import type { FailurePoint } from './demo';
 import {
   type CreateIssueInput,
+  type CustomerMailAdapter,
   type IssueTrackerAdapter,
   type MessagingAdapter,
   fail,
@@ -25,7 +26,11 @@ import {
 type RemoteResult = ActionResult & { error?: string };
 
 async function callExecute(
-  action: 'tracker.create_issue' | 'tracker.assign_owner' | 'chat.notify_team',
+  action:
+    | 'tracker.create_issue'
+    | 'tracker.assign_owner'
+    | 'chat.notify_team'
+    | 'mail.reply_customer',
   params: Record<string, unknown>,
 ): Promise<RemoteResult> {
   const started = Date.now();
@@ -155,6 +160,32 @@ export class RemoteMessagingAdapter implements MessagingAdapter {
         sentBy: 'repeat',
       });
     }
+    return result;
+  }
+}
+
+/**
+ * The customer acknowledgement, sent for real through connected Gmail. The
+ * credentials never leave the server; this only names the message to reply
+ * to and the text to send.
+ */
+export class RemoteCustomerMailAdapter implements CustomerMailAdapter {
+  readonly name = 'remote:mail';
+  readonly live = true;
+
+  sent: { to: string; body: string }[] = [];
+
+  async replyToCustomer(input: {
+    messageId: string;
+    customerEmail: string;
+    body: string;
+  }): Promise<ActionResult> {
+    const result = await callExecute('mail.reply_customer', {
+      messageId: input.messageId,
+      customerEmail: input.customerEmail,
+      body: input.body,
+    });
+    if (result.ok) this.sent.push({ to: input.customerEmail, body: input.body });
     return result;
   }
 }

@@ -147,7 +147,8 @@ function LearningStrip({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-panel border border-edge-faint bg-ink-900/60 px-5 py-3.5"
+      style={{ '--tint': '#946d6d' } as React.CSSProperties}
+      className="panel-tinted flex flex-wrap items-center gap-x-6 gap-y-3 rounded-panel border border-edge-faint bg-ink-900/60 px-5 py-3.5"
     >
       <div className="flex items-center gap-3">
         <Orb state={observing || comparing ? 'learning' : 'idle'} size={26} />

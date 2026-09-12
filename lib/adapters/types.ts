@@ -36,9 +36,22 @@ export interface MessagingAdapter {
   postMessage(input: { channel: string; body: string }): Promise<ActionResult>;
 }
 
+/** Replying to the person who filed the report. Send-only, never reads. */
+export interface CustomerMailAdapter {
+  readonly name: string;
+  readonly live: boolean;
+  replyToCustomer(input: {
+    /** REPEAT's id for the original message, so the reply threads onto it. */
+    messageId: string;
+    customerEmail: string;
+    body: string;
+  }): Promise<ActionResult>;
+}
+
 export type AdapterBundle = {
   tracker: IssueTrackerAdapter;
   messaging: MessagingAdapter;
+  mail: CustomerMailAdapter;
 };
 
 export function ok(

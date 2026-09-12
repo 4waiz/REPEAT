@@ -143,7 +143,8 @@ export function MemoryMap({ pattern }: { pattern: LearnedPattern | null }) {
         data: {
           title: STEP_META[key].title,
           source: STEP_META[key].source,
-          icon: key === 'read' ? 'mail' : key,
+          // Both mail steps wear the mail icon; the rest are named for their step.
+          icon: key === 'read' || key === 'reply' ? 'mail' : key,
           status: statusByStep.get(step.id) ?? 'idle',
         } satisfies StepNodeData as unknown as Record<string, unknown>,
         draggable: false,

@@ -7,7 +7,7 @@
  *   - each bug is classified into the right engineering area
  *   - two similar traces cross the pattern threshold
  *   - the compiler generalizes owner/customer/title instead of memorizing them
- *   - a frontend bug reroutes to Noor even though only Umar was ever observed
+ *   - a billing complaint reroutes to Awaiz even though only Umar was ever observed
  *   - an unapproved run cannot execute
  *
  * Run with:  npm run verify
@@ -20,7 +20,8 @@ import { compilePattern } from '@/lib/patterns/compiler';
 import { planRun } from '@/lib/agents/ghost-runner';
 import { assertExecutable } from '@/lib/policy/policy';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
-import { DemoIssueTrackerAdapter, DemoMessagingAdapter } from '@/lib/adapters/demo';
+import { DemoIssueTrackerAdapter, DemoCustomerMailAdapter,
+  DemoMessagingAdapter } from '@/lib/adapters/demo';
 import { formatDuration, formatPercent } from '@/lib/utils';
 
 let failures = 0;
@@ -61,12 +62,12 @@ async function main() {
     console.log(`         evidence: ${u.evidence.join(' | ')}`);
   }
 
-  check('bug 1 is backend', u1.area === 'backend', u1.area);
+  check('bug 1 is technical support', u1.area === 'technical-support', u1.area);
   check('bug 1 is authentication', u1.category === 'authentication', u1.category);
-  check('bug 2 is backend', u2.area === 'backend', u2.area);
+  check('bug 2 is technical support', u2.area === 'technical-support', u2.area);
   check('bug 2 is performance', u2.category === 'performance', u2.category);
-  check('bug 3 is frontend', u3.area === 'frontend', u3.area);
-  check('bug 3 is ui', u3.category === 'ui', u3.category);
+  check('bug 3 is billing', u3.area === 'billing', u3.area);
+  check('bug 3 is a data issue', u3.category === 'data', u3.category);
   check('bug 1 customer extracted', u1.customerName === 'Alex Chen', u1.customerName);
   check('bug 3 customer extracted', u3.customerName === 'Daniel Okafor', u3.customerName);
   check('all confidences above floor', [u1, u2, u3].every((u) => u.confidence > 0.6));
@@ -150,11 +151,11 @@ async function main() {
   check('risk is low', run.risk === 'low', run.risk);
 
   const assignAction = run.proposedActions.find((a) => a.action === 'tracker.assign_owner');
-  check('owner adapted to Noor', assignAction?.resolvedParams.owner === 'Noor', String(assignAction?.resolvedParams.owner));
-  check('adaptation recorded', run.adaptations.some((a) => a.field === 'owner' && a.adaptedValue === 'Noor'));
+  check('owner adapted to Awaiz', assignAction?.resolvedParams.owner === 'Awaiz', String(assignAction?.resolvedParams.owner));
+  check('adaptation recorded', run.adaptations.some((a) => a.field === 'owner' && a.adaptedValue === 'Awaiz'));
   check(
     'adaptation cites the routing rule',
-    run.adaptations.some((a) => a.rule.includes('frontend') && a.rule.includes('Noor')),
+    run.adaptations.some((a) => a.rule.includes('billing') && a.rule.includes('Awaiz')),
   );
   check('observed owner was Umar', run.adaptations.some((a) => a.observedValue === 'Umar'));
   check('no unresolved variable bindings', !JSON.stringify(run.proposedActions).includes('$var'));
@@ -199,6 +200,7 @@ async function main() {
     await executeRun(run, {
       tracker: new DemoIssueTrackerAdapter(),
       messaging: new DemoMessagingAdapter(),
+      mail: new DemoCustomerMailAdapter(),
       onStep: () => {},
       stepDelayMs: 0,
     });
@@ -213,7 +215,8 @@ async function main() {
   const approved = { ...run, approved: true, approvedAt: new Date().toISOString() };
   const tracker = new DemoIssueTrackerAdapter();
   const messaging = new DemoMessagingAdapter();
-  const done = await executeRun(approved, { tracker, messaging, onStep: () => {}, stepDelayMs: 0 });
+  const mail = new DemoCustomerMailAdapter();
+  const done = await executeRun(approved, { tracker, messaging, mail, onStep: () => {}, stepDelayMs: 0 });
 
   console.log(`  status=${done.status}`);
   for (const a of done.proposedActions) {
@@ -226,12 +229,12 @@ async function main() {
   check('run completed', done.status === 'completed', done.status);
   check('every action succeeded', done.proposedActions.every((a) => a.status === 'succeeded'));
   check('an issue was created', tracker.issues.length === 1, String(tracker.issues.length));
-  check('issue assigned to Noor', tracker.issues[0]?.assignee === 'Noor', String(tracker.issues[0]?.assignee));
-  check('issue labelled frontend', tracker.issues[0]?.labels.includes('frontend') === true, tracker.issues[0]?.labels.join('/'));
+  check('issue assigned to Awaiz', tracker.issues[0]?.assignee === 'Awaiz', String(tracker.issues[0]?.assignee));
+  check('issue labelled billing', tracker.issues[0]?.labels.includes('billing') === true, tracker.issues[0]?.labels.join('/'));
   check('team was notified once', messaging.messages.length === 1, String(messaging.messages.length));
   check(
     'notification names the owner and issue',
-    /Noor/.test(messaging.messages[0]?.body ?? '') && /#\d+/.test(messaging.messages[0]?.body ?? ''),
+    /Awaiz/.test(messaging.messages[0]?.body ?? '') && /#\d+/.test(messaging.messages[0]?.body ?? ''),
     messaging.messages[0]?.body?.slice(0, 80),
   );
   check(
@@ -247,9 +250,11 @@ async function main() {
   const failRun = { ...planRun(active, BUG_3, u3, 60), approved: true };
   const failTracker = new DemoIssueTrackerAdapter({ startNumber: 60, failAt: 'notify_team' });
   const failMessaging = new DemoMessagingAdapter({ failAt: 'notify_team' });
+  const failMail = new DemoCustomerMailAdapter();
   const failed = await executeRun(failRun, {
     tracker: failTracker,
     messaging: failMessaging,
+    mail: failMail,
     onStep: () => {},
     stepDelayMs: 0,
   });
@@ -290,7 +295,13 @@ async function main() {
           : a,
       ),
     },
-    { tracker: retryTracker, messaging: retryMessaging, onStep: () => {}, stepDelayMs: 0 },
+    {
+      tracker: retryTracker,
+      messaging: retryMessaging,
+      mail: new DemoCustomerMailAdapter(),
+      onStep: () => {},
+      stepDelayMs: 0,
+    },
   );
 
   check('retry completes', resumed.status === 'completed', resumed.status);

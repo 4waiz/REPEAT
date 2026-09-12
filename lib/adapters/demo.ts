@@ -2,6 +2,7 @@ import type { ActionResult, ChatMessage, TrackerIssue } from '@/types';
 import { FIRST_ISSUE_NUMBER, TRACKER_PROJECT } from '@/lib/demo/fixtures';
 import { makeId } from '@/lib/utils';
 import {
+  type CustomerMailAdapter,
   type CreateIssueInput,
   type IssueTrackerAdapter,
   type MessagingAdapter,
@@ -18,7 +19,12 @@ import {
  */
 
 /** Deliberate failure injection, used by the "simulate error" demo control. */
-export type FailurePoint = 'none' | 'create_issue' | 'assign_owner' | 'notify_team';
+export type FailurePoint =
+  | 'none'
+  | 'create_issue'
+  | 'assign_owner'
+  | 'notify_team'
+  | 'reply_customer';
 
 export class DemoIssueTrackerAdapter implements IssueTrackerAdapter {
   readonly name = 'demo:tracker';
@@ -98,5 +104,33 @@ export class DemoMessagingAdapter implements MessagingAdapter {
     };
     this.messages.push(message);
     return ok(this.name, `Posted to #${input.channel}`, { channel: input.channel });
+  }
+}
+
+/**
+ * Demo Mode's customer reply: recorded, never sent. Keeps the same shape as
+ * the live adapter so the executor cannot tell them apart.
+ */
+export class DemoCustomerMailAdapter implements CustomerMailAdapter {
+  readonly name = 'demo:mail';
+  readonly live = false;
+
+  sent: { to: string; body: string }[] = [];
+  failAt: FailurePoint = 'none';
+
+  constructor(opts: { failAt?: FailurePoint } = {}) {
+    this.failAt = opts.failAt ?? 'none';
+  }
+
+  async replyToCustomer(input: {
+    messageId: string;
+    customerEmail: string;
+    body: string;
+  }): Promise<ActionResult> {
+    if (this.failAt === 'reply_customer') {
+      return fail(this.name, 'Reply delivery failed (simulated timeout).');
+    }
+    this.sent.push({ to: input.customerEmail, body: input.body });
+    return ok(this.name, `Replied to ${input.customerEmail}`, { to: input.customerEmail });
   }
 }

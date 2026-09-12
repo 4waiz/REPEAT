@@ -14,7 +14,17 @@ import type { MailMessage } from '@/types';
  * Plain fetch throughout; no client library needed for three endpoints.
  */
 
-export const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+/**
+ * Read the inbox, and reply to the customer who wrote in — nothing else.
+ * `gmail.send` can only create and send new mail; it cannot read, modify or
+ * delete anything, so the pair stays the narrowest set that does the job.
+ * Widening this list invalidates existing consent: the user has to click
+ * Connect Gmail again before a reply can be sent.
+ */
+export const GMAIL_SCOPE = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send',
+].join(' ');
 const AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -248,4 +258,100 @@ export async function fetchRecentMailOAuth(
     address: readToken()?.email,
     messages: messages.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)),
   };
+}
+
+/* ------------------------------------------------------------------------ */
+/* Replying                                                                 */
+/* ------------------------------------------------------------------------ */
+
+/** RFC 2047 encoded-word, so a non-ASCII subject survives the wire. */
+function encodeHeader(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x00-\x7F]*$/.test(value)) return value;
+  return `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
+}
+
+function encodeBase64Url(value: string): string {
+  return Buffer.from(value, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+export type SentReply = { id: string; threadId: string; to: string; subject: string };
+
+/**
+ * Reply to the customer, in their own thread.
+ *
+ * The original message is read back first for its RFC822 Message-ID: without
+ * In-Reply-To and References, Gmail files the reply as a new conversation and
+ * the customer sees an orphaned email instead of an answer to what they sent.
+ *
+ * `messageId` is REPEAT's own id for the mail (`gmail_<id>`) or the bare
+ * Gmail id; anything else is rejected rather than guessed at.
+ */
+export async function sendReplyOAuth(
+  config: GmailOAuthConfig,
+  input: { messageId: string; body: string; subjectPrefix?: string },
+): Promise<SentReply> {
+  const bearer = await accessToken(config);
+  const headers = { authorization: `Bearer ${bearer}` };
+  const gmailId = input.messageId.replace(/^gmail_/, '');
+  if (!/^[A-Za-z0-9_-]+$/.test(gmailId)) {
+    throw new Error(`Not a Gmail message id: ${input.messageId}`);
+  }
+
+  const lookup = await fetch(
+    `${API}/messages/${gmailId}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=References`,
+    { headers },
+  );
+  if (!lookup.ok) throw new Error(`Gmail could not read the message to reply to (${lookup.status})`);
+  const original = (await lookup.json()) as GmailMessage;
+
+  const to = header(original.payload, 'From');
+  if (!to) throw new Error('The original message has no From address to reply to.');
+  const originalSubject = header(original.payload, 'Subject') || '(no subject)';
+  const messageIdHeader = header(original.payload, 'Message-ID');
+  const references = [header(original.payload, 'References'), messageIdHeader]
+    .filter(Boolean)
+    .join(' ');
+
+  const prefix = input.subjectPrefix ?? 'Re: ';
+  const subject = originalSubject.toLowerCase().startsWith('re:')
+    ? originalSubject
+    : `${prefix}${originalSubject}`;
+
+  const lines = [
+    `To: ${to}`,
+    `Subject: ${encodeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="UTF-8"',
+    ...(messageIdHeader ? [`In-Reply-To: ${messageIdHeader}`] : []),
+    ...(references ? [`References: ${references}`] : []),
+    '',
+    input.body,
+  ];
+
+  const response = await fetch(`${API}/messages/send`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      raw: encodeBase64Url(lines.join('\r\n')),
+      ...(original.threadId ? { threadId: original.threadId } : {}),
+    }),
+  });
+  const data = (await response.json()) as {
+    id?: string;
+    threadId?: string;
+    error?: { message?: string; status?: string };
+  };
+  if (!response.ok || !data.id) {
+    const reason = data.error?.message ?? `HTTP ${response.status}`;
+    // The commonest cause by far: consent predates the gmail.send scope.
+    const hint = response.status === 403 ? ' — reconnect Gmail to grant send access.' : '';
+    throw new Error(`Gmail refused to send the reply: ${reason}${hint}`);
+  }
+
+  return { id: data.id, threadId: data.threadId ?? '', to, subject };
 }

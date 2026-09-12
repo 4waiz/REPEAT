@@ -11,6 +11,7 @@ import { CommandPalette } from '@/components/repeat/CommandPalette';
 import { MailWindow } from '@/components/workspace/MailWindow';
 import { TrackerWindow } from '@/components/workspace/TrackerWindow';
 import { ChatWindow } from '@/components/workspace/ChatWindow';
+import { ResizableRow } from '@/components/workspace/ResizableRow';
 import { ActionPanel } from '@/components/workflows/ActionPanel';
 import { GhostRunCompact } from '@/components/ghost-run/GhostRunPanel';
 import { MemoryMapCompact } from '@/components/memory-map/MemoryMapCompact';
@@ -88,7 +89,8 @@ export default function WorkspacePage() {
           Once the agent takes over, the workspace recedes: the app row gives
           up height so the Ghost Run — and crucially its Execute control —
           stay above the fold without the presenter scrolling. */}
-      <div
+      <ResizableRow
+        storageKey="repeat.layout.apps"
         className={cn(
           'grid min-h-0 shrink-0 grid-cols-1 gap-3 px-4 transition-[height] duration-500 ease-swift lg:grid-cols-3',
           agentOnStage
@@ -99,7 +101,7 @@ export default function WorkspacePage() {
         <MailWindow />
         <TrackerWindow />
         <ChatWindow />
-      </div>
+      </ResizableRow>
 
       {/* the narrative spine */}
       <ActionPanel />
@@ -109,8 +111,12 @@ export default function WorkspacePage() {
           flex-1 the row grows with its own scrollable content and the whole
           page starts scrolling (measured 2223px tall at 1080p). The clamp
           keeps the workspace to exactly one screen at 768p and 1080p alike. */}
-      <div className="grid min-h-0 shrink-0 grid-cols-1 gap-3 px-4 pb-16 md:grid-cols-2 xl:grid-cols-[1.05fr_1fr_1.05fr] xl:[height:clamp(208px,25vh,268px)]">
-        <Panel className="flex min-h-[208px] flex-col overflow-hidden">
+      <ResizableRow
+        storageKey="repeat.layout.inspect"
+        activeFrom={1280}
+        className="grid min-h-0 shrink-0 grid-cols-1 gap-3 px-4 pb-16 md:grid-cols-2 xl:grid-cols-[1.05fr_1fr_1.05fr] xl:[height:clamp(208px,25vh,268px)]"
+      >
+        <Panel tint="sky" className="flex min-h-[208px] flex-col overflow-hidden">
           <PanelHeader
             title="Memory map"
             icon={<Network />}
@@ -128,7 +134,7 @@ export default function WorkspacePage() {
           <MemoryMapCompact pattern={pattern} />
         </Panel>
 
-        <Panel className="flex min-h-[208px] flex-col overflow-hidden">
+        <Panel tint="cream" className="flex min-h-[208px] flex-col overflow-hidden">
           <PanelHeader
             title="Live timeline"
             icon={<Activity />}
@@ -149,6 +155,7 @@ export default function WorkspacePage() {
         </Panel>
 
         <Panel
+          tint="violet"
           className={`flex min-h-[208px] flex-col overflow-hidden ${
             activeRun && phase !== 'completed' ? 'border-iris-400/25' : ''
           }`}
@@ -179,7 +186,7 @@ export default function WorkspacePage() {
             finished={phase === 'completed' || phase === 'error'}
           />
         </Panel>
-      </div>
+      </ResizableRow>
 
       <RepeatDock />
       <DemoConsole />
