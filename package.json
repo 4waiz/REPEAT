@@ -10,6 +10,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "verify": "node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-engine.ts",
+    "verify:live": "node --env-file-if-exists=.env --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-live.ts",
     "check": "npm run typecheck && npm run verify && npm run lint"
   },
   "dependencies": {
