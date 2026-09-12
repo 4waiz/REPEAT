@@ -13,6 +13,7 @@
     "verify:live": "node --env-file-if-exists=.env --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-live.ts",
     "verify:ambiguous": "node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-ambiguous.ts",
     "verify:copilotkit": "node --env-file-if-exists=.env --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-copilotkit.ts",
+    "verify:surfaces": "node --env-file-if-exists=.env --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-surfaces.ts",
     "check": "npm run typecheck && npm run verify && npm run lint"
   },
   "dependencies": {
