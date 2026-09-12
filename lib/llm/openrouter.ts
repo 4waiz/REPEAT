@@ -1,12 +1,14 @@
 /**
- * Chat-completions client: OpenRouter first, OpenAI direct as the alternative.
+ * Chat-completions client: OpenRouter first; OpenAI or Gemini direct as
+ * alternatives.
  *
  * Every model REPEAT can use — OpenAI, Anthropic, Google, open weights — is
  * reached through OpenRouter's single OpenAI-compatible endpoint, so changing
  * the model is an environment variable, not a code change. Because the wire
- * format is OpenAI's, the same client can also talk to OpenAI directly when
- * only an OPENAI_API_KEY is set. The key lives on the server only; this
- * module is never imported by client code.
+ * format is OpenAI's, the same client can also talk to OpenAI directly
+ * (OPENAI_API_KEY) or to the Gemini API's OpenAI-compatible endpoint
+ * (GEMINI_API_KEY). The key lives on the server only; this module is never
+ * imported by client code.
  *
  * The client does one thing: ask for a JSON object and hand back the raw
  * text. Validation is the caller's job, because the caller owns the schema.
@@ -14,6 +16,8 @@
 
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 export const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+/** Gemini's OpenAI-compatibility layer (ai.google.dev/gemini-api/docs/openai). */
+export const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
 /**
  * Fast, cheap, and reliably emits JSON. Overridable with OPENROUTER_MODEL;
@@ -23,8 +27,10 @@ export const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-4.1-mini';
 /** The same model, in OpenAI's own naming, for the direct path. */
 export const DEFAULT_OPENAI_MODEL = 'gpt-4.1-mini';
+/** Fast and cheap; the same model passed the live self-test via OpenRouter. */
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
-export type LlmProvider = 'openrouter' | 'openai';
+export type LlmProvider = 'openrouter' | 'openai' | 'gemini';
 
 export type LlmConfig = {
   provider: LlmProvider;
@@ -60,12 +66,21 @@ export class OpenRouterError extends Error {
   }
 }
 
-const PROVIDER_LABEL: Record<LlmProvider, string> = { openrouter: 'OpenRouter', openai: 'OpenAI' };
+const PROVIDER_LABEL: Record<LlmProvider, string> = {
+  openrouter: 'OpenRouter',
+  openai: 'OpenAI',
+  gemini: 'Gemini',
+};
+
+/** Human name of a provider, for the Ghost Run and the timeline. */
+export function providerLabel(provider: LlmProvider | undefined): string {
+  return provider ? PROVIDER_LABEL[provider] : PROVIDER_LABEL.openrouter;
+}
 
 /**
- * Read configuration from the environment. OpenRouter wins when both keys
- * are present — it is the path that was demoed and tested most. Null when
- * no key is set at all.
+ * Read configuration from the environment. Precedence when several keys are
+ * present: OpenRouter (the path that was demoed and tested most), then
+ * OpenAI, then Gemini. Null when no key is set at all.
  */
 export function llmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfig | null {
   const siteUrl = env.OPENROUTER_SITE_URL?.trim() || 'https://github.com/4waiz/REPEAT';
@@ -94,6 +109,19 @@ export function llmConfig(env: NodeJS.ProcessEnv = process.env): LlmConfig | nul
       url: env.OPENAI_BASE_URL?.trim() || OPENAI_URL,
       apiKey: openAiKey,
       model: env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL,
+      fallbackModels: [],
+      siteUrl,
+      appName,
+    };
+  }
+
+  const geminiKey = env.GEMINI_API_KEY?.trim();
+  if (geminiKey) {
+    return {
+      provider: 'gemini',
+      url: GEMINI_URL,
+      apiKey: geminiKey,
+      model: env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL,
       fallbackModels: [],
       siteUrl,
       appName,
@@ -140,7 +168,7 @@ export async function completeJson(
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${config.apiKey}`,
-        // Attribution headers; OpenRouter reads them, OpenAI ignores them.
+        // Attribution headers; OpenRouter reads them, the others ignore them.
         'http-referer': config.siteUrl,
         'x-title': config.appName,
       },

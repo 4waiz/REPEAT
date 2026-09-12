@@ -145,7 +145,7 @@ export type IssueUnderstanding = {
   /** The model behind an `llm` understanding, e.g. "openai/gpt-4.1-mini". */
   model?: string;
   /** Which service the model was reached through. */
-  provider?: 'openrouter' | 'openai';
+  provider?: 'openrouter' | 'openai' | 'gemini';
   /** Related context from the research step, when it ran. */
   references?: IssueReference[];
 };

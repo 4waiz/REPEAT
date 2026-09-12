@@ -109,7 +109,10 @@ async function runModelPass(
   timeoutMs: number,
 ): Promise<{ understanding: IssueUnderstanding; latencyMs?: number; fallbackReason?: string }> {
   if (!config) {
-    return { understanding: deterministic, fallbackReason: 'Neither OPENROUTER_API_KEY nor OPENAI_API_KEY is set' };
+    return {
+      understanding: deterministic,
+      fallbackReason: 'No model key set (OPENROUTER_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY)',
+    };
   }
 
   try {

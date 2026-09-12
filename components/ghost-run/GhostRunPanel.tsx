@@ -17,6 +17,7 @@ import {
 import type { AgentRun, IssueReference, PermissionClass, PlannedAction, RiskLevel } from '@/types';
 import { PERMISSION_POLICY } from '@/lib/policy/policy';
 import { AREA_DISPLAY, CATEGORY_DISPLAY, SEVERITY_DISPLAY } from '@/lib/agents/understanding';
+import { providerLabel } from '@/lib/llm/openrouter';
 import { TEAM } from '@/lib/demo/team';
 import { Badge, Button, ConfidenceBar, Dot } from '@/components/ui/primitives';
 import { Orb } from '@/components/repeat/Orb';
@@ -204,7 +205,7 @@ export function GhostRunPanel({
                 label="Understood by"
                 value={
                   u.source === 'llm'
-                    ? `${u.model ?? 'language model'} via ${u.provider === 'openai' ? 'OpenAI' : 'OpenRouter'} · validated`
+                    ? `${u.model ?? 'language model'} via ${providerLabel(u.provider)} · validated`
                     : 'deterministic classifier'
                 }
               />

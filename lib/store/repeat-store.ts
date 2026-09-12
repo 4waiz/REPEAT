@@ -23,6 +23,7 @@ import { detect, liveConfidence } from '@/lib/patterns/detector';
 import { compilePattern } from '@/lib/patterns/compiler';
 import { understandDeterministic } from '@/lib/agents/understanding';
 import { requestUnderstanding } from '@/lib/agents/understand-client';
+import { providerLabel } from '@/lib/llm/openrouter';
 import type { LiveUnderstanding } from '@/lib/agents/understanding-live';
 import { planRun, applyOwnerOverride } from '@/lib/agents/ghost-runner';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
@@ -259,7 +260,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
       pushTimeline({
         label: provenance.usedLlm ? `Report read by ${provenance.model}` : 'Report read by the deterministic classifier',
         detail: provenance.usedLlm
-          ? `via ${provenance.provider === 'openai' ? 'OpenAI' : 'OpenRouter'} · validated · evidence grounded in the report${
+          ? `via ${providerLabel(provenance.provider)} · validated · evidence grounded in the report${
               provenance.llmLatencyMs ? ` · ${(provenance.llmLatencyMs / 1000).toFixed(1)}s` : ''
             }`
           : provenance.fallbackReason,

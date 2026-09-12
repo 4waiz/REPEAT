@@ -66,7 +66,7 @@ async function main() {
   console.log(`  model provider:     ${llm ? `${llm.provider}  model=${llm.model}${llm.fallbackModels.length ? ` fallbacks=${llm.fallbackModels.join(',')}` : ''}` : 'missing (set OPENROUTER_API_KEY or OPENAI_API_KEY)'}`);
   console.log(`  EXA_API_KEY:        ${exa ? 'set' : 'missing'}`);
   if (!llm && !exa) {
-    console.log('\n  Nothing to test. Copy .env.example to .env and add OPENROUTER_API_KEY (or OPENAI_API_KEY) and EXA_API_KEY.');
+    console.log('\n  Nothing to test. Copy .env.example to .env and add OPENROUTER_API_KEY (or OPENAI_API_KEY / GEMINI_API_KEY) and EXA_API_KEY.');
     process.exit(1);
   }
 
