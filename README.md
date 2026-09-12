@@ -369,6 +369,35 @@ the demo works.
 
 ---
 
+## Deploying the demo
+
+The public demo is a Cloudflare Worker: <https://repeat.kanbanstudios.ae>.
+
+It is the Demo Mode build and nothing else. `wrangler.jsonc` pins
+`DEMO_MODE=true` and uploads no key of any kind, and in Demo Mode the client
+makes no requests at all — so the deployed site cannot reach Gmail, ClickUp or
+Slack even if someone wanted it to.
+
+```bash
+npx opennextjs-cloudflare build   # -> .open-next
+npx wrangler deploy
+```
+
+The adapter is [OpenNext for Cloudflare](https://opennext.js.org/cloudflare).
+`repeat.kanbanstudios.ae` is attached to the Worker as a custom domain, so a
+deploy needs no DNS change.
+
+Two constraints worth knowing before changing any of this:
+
+- OpenNext reads the Next.js output from `.next` and nowhere else, so this
+  build cannot use the `.next-build` directory that `npm run build` keeps
+  separate for a running dev server. Stop `npm run dev` first, or build from a
+  clean checkout.
+- Workers cannot run `sharp`, so `images.unoptimized` is set. The only image is
+  the logo, which is already the size it is drawn at.
+
+---
+
 ## Demo Mode
 
 **Demo Mode is on unless you explicitly turn it off.** A hackathon demo that

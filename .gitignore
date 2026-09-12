@@ -14,3 +14,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .repeat
+
+# Cloudflare Workers build output
+.open-next
+.wrangler

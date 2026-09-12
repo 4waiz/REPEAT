@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "repeat",
+  "main": ".open-next/worker.js",
+  // The zone kanbanstudios.ae lives in this account; the Worker must too,
+  // or the custom domain below cannot be attached.
+  "account_id": "f8dc06dc6cc06ecfe499b2fdbcf45196",
+  "compatibility_date": "2026-09-01",
+  // Next.js on Workers needs Node built-ins (Buffer, async_hooks) at runtime.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "routes": [{ "pattern": "repeat.kanbanstudios.ae", "custom_domain": true }],
+  "vars": {
+    // The public build is Demo Mode, always: no keys, no network, no inbox.
+    "DEMO_MODE": "true",
+    "NEXT_PUBLIC_DEMO_MODE": "true"
+  },
+  "observability": { "enabled": true }
+}

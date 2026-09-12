@@ -298,6 +298,7 @@ Product and operations: the demo narrative and 2-minute script, the hidden demo 
 ## 6. Additional Links
 
 ```
+Live demo (Demo Mode, no sign-in): https://repeat.kanbanstudios.ae
 GitHub repository: https://github.com/4waiz/REPEAT
 2-minute demo script: https://github.com/4waiz/REPEAT/blob/main/docs/DEMO-SCRIPT.md
 Architecture & design decisions: https://github.com/4waiz/REPEAT/blob/main/README.md
