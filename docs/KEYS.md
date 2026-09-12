@@ -69,15 +69,19 @@ The first configured tracker wins, or force one with `TRACKER=clickup|jira|ambig
 
 No key. Load `extension/` unpacked (`chrome://extensions` → Developer mode →
 Load unpacked) while `npm run dev` is running in live mode. It only sends
-semantic events to `http://localhost:3000/api/observe`. You test it in your
-own logged-in Chrome; the popup shows the last events it captured.
+semantic events to `http://localhost:3000/api/observe`; the workspace polls
+that feed and learns from it exactly as from the replica apps. You test it
+in your own logged-in Chrome: the popup shows the last events captured,
+whether REPEAT received them, and has a **Finish observation** button for
+when a pass is done. `npm run verify:surfaces` checks every connector above
+with one command.
 
 ## 8. MCP servers (for the coding agent, not the app)
 
 | Server | Setup | Note |
 |---|---|---|
 | Exa MCP | `claude plugin install exa@claude-plugins-official`, then a new Claude Code session | Gives Claude Code web search. The app calls Exa's REST API directly. |
-| ClickUp MCP | *being verified* — will be documented once confirmed | The app calls ClickUp's REST API directly. |
+| ClickUp MCP | `claude mcp add --transport http clickup https://mcp.clickup.com/mcp` (then sign in via OAuth when Claude Code prompts) | **OAuth-only by ClickUp's own FAQ** — it cannot be used with a `pk_` token, and it is capped at 50–300 calls/day without their AI add-on. So the app talks to ClickUp's REST API (100 req/min); the MCP is for Claude Code. |
 
 ---
 
