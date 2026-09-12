@@ -1,7 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { CircleDot, ClipboardPaste, GitPullRequestArrow, Plus, Tag } from 'lucide-react';
+import { CircleDot, ClipboardPaste, ExternalLink, GitPullRequestArrow, Plus, Tag } from 'lucide-react';
 import type { IssueSeverity } from '@/types';
 import { useRepeat, selectNextAction } from '@/lib/store/repeat-store';
 import { TEAM } from '@/lib/demo/team';
@@ -272,8 +272,22 @@ export function TrackerWindow() {
                       ) : null}
                     </div>
                     {issue.createdBy === 'repeat' ? (
-                      <div className="mt-1.5 inline-flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-400/10 px-1 py-px text-3xs uppercase tracking-[0.1em] text-cyan-300">
-                        by repeat
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 rounded border border-cyan-400/25 bg-cyan-400/10 px-1 py-px text-3xs uppercase tracking-[0.1em] text-cyan-300">
+                          by repeat
+                        </span>
+                        {/* Only a live tracker has a real address; the replica's is local. */}
+                        {issue.url && /^https?:\/\//.test(issue.url) && !issue.url.includes('tracker.local') ? (
+                          <a
+                            href={issue.url}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="inline-flex items-center gap-1 text-3xs text-teal-300 hover:text-teal-200"
+                          >
+                            open in tracker
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

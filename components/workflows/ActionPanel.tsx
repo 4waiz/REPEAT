@@ -7,6 +7,7 @@ import {
   BellRing,
   Check,
   Clock,
+  ExternalLink,
   Eye,
   MousePointerClick,
   RefreshCw,
@@ -39,6 +40,7 @@ export function ActionPanel() {
   const confidence = useRepeat((s) => s.confidencePeak);
   const observed = useRepeat(selectObservedCount);
   const banner = useRepeat((s) => s.banner);
+  const liveTarget = useRepeat((s) => s.live?.tracker?.target ?? null);
 
   const approvePattern = useRepeat((s) => s.approvePattern);
   const showPatternFirst = useRepeat((s) => s.showPatternFirst);
@@ -96,6 +98,7 @@ export function ActionPanel() {
         onExecute={() => void approveAndExecute()}
         onCancel={cancelRun}
         onResolveOwner={resolveOwner}
+        liveTarget={liveTarget}
       />
     );
   } else if (phase === 'completed' && activeRun) {
@@ -298,6 +301,11 @@ function CompletionCard({ run, onNext }: { run: AgentRun; onNext: () => void }) 
   const created = run.proposedActions.find((a) => a.action === 'tracker.create_issue');
   const assigned = run.proposedActions.find((a) => a.action === 'tracker.assign_owner');
   const issueNumber = created?.result?.data?.number ?? created?.resolvedParams.issueNumber;
+  // A live tracker gives the ticket a real address; the replica one does not.
+  const issueUrl =
+    typeof created?.result?.data?.url === 'string' && /^https?:\/\//.test(created.result.data.url)
+      ? created.result.data.url
+      : null;
 
   return (
     <motion.div
@@ -331,6 +339,20 @@ function CompletionCard({ run, onNext }: { run: AgentRun; onNext: () => void }) 
               Issue #{String(issueNumber)} created and assigned to{' '}
               <span className="text-teal-200">{String(assigned?.resolvedParams.owner)}</span>. Team
               notified.
+              {issueUrl ? (
+                <>
+                  {' '}
+                  <a
+                    href={issueUrl}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="inline-flex items-center gap-1 text-teal-300 underline decoration-teal-400/40 underline-offset-2 hover:text-teal-200"
+                  >
+                    Open the real ticket
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                </>
+              ) : null}
             </p>
           </div>
         </div>

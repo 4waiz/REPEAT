@@ -58,6 +58,7 @@ export function GhostRunPanel({
   onExecute,
   onCancel,
   onResolveOwner,
+  liveTarget,
 }: {
   run: AgentRun;
   executing: boolean;
@@ -65,6 +66,8 @@ export function GhostRunPanel({
   onExecute: () => void;
   onCancel: () => void;
   onResolveOwner: (owner: string) => void;
+  /** Where the ticket will really be created in live mode, e.g. "ClickUp · Engineering & Delivery". */
+  liveTarget?: string | null;
 }) {
   const u = run.understanding;
   const risk = RISK_TONE[run.risk];
@@ -262,7 +265,12 @@ export function GhostRunPanel({
           ) : (
             <>
               <ShieldCheck className="h-3.5 w-3.5 text-teal-400" />
-              <span className="text-xs text-mist-300">No external changes have been made.</span>
+              <span className="text-xs text-mist-300">
+                No external changes have been made.
+                {liveTarget ? (
+                  <span className="text-mist-500"> Execute files the ticket in {liveTarget}.</span>
+                ) : null}
+              </span>
             </>
           )}
         </div>

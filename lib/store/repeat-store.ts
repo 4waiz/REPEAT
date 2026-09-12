@@ -28,6 +28,7 @@ import type { LiveUnderstanding } from '@/lib/agents/understanding-live';
 import { planRun, applyOwnerOverride } from '@/lib/agents/ghost-runner';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
 import { DemoIssueTrackerAdapter, DemoMessagingAdapter, type FailurePoint } from '@/lib/adapters/demo';
+import { RemoteIssueTrackerAdapter, RemoteMessagingAdapter } from '@/lib/adapters/remote';
 import { DEFAULT_CHANNEL, composeTeamMessage } from '@/lib/agents/compose';
 import {
   BUG_FIXTURES,
@@ -72,6 +73,11 @@ type Metrics = {
   manualActionsAvoided: number;
   timeSavedSeconds: number;
   humanInterventions: number;
+};
+
+export type LiveTargets = {
+  tracker: { name: string; live: boolean; target: string } | null;
+  messaging: { name: string; live: boolean; target: string } | null;
 };
 
 type Settings = {
@@ -122,6 +128,12 @@ export type RepeatState = {
   banner: { kind: 'trigger' | 'error' | 'info'; text: string } | null;
   /** Index into BUG_FIXTURES for the next email the demo should deliver. */
   deliveredCount: number;
+  /**
+   * What live execution would touch, as reported by GET /api/execute. Null in
+   * Demo Mode and until the first fetch. A null `tracker` in live mode means
+   * no tracker is configured and the replica tracker stays in charge.
+   */
+  live: LiveTargets | null;
 
   // ---- lifecycle -------------------------------------------------------
   init: () => void;
@@ -224,6 +236,27 @@ export const useRepeat = create<RepeatState>((set, get) => {
 
   const cue = (name: Parameters<typeof playCue>[0]) => {
     if (get().settings.soundOn) playCue(name);
+  };
+
+  const loadLiveTargets = async () => {
+    try {
+      const response = await fetch('/api/execute');
+      if (!response.ok) return;
+      const data = (await response.json()) as LiveTargets & { demoMode?: boolean };
+      if (data.demoMode) return;
+      set({ live: { tracker: data.tracker ?? null, messaging: data.messaging ?? null } });
+      if (data.tracker) {
+        pushTimeline({
+          label: `Live tracker: ${data.tracker.target}`,
+          detail: 'Tickets REPEAT files will be created there, after your approval',
+          origin: 'system',
+          status: 'done',
+          app: 'tracker',
+        });
+      }
+    } catch {
+      // Stay on the replica tracker; nothing to report.
+    }
   };
 
   /**
@@ -354,6 +387,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
     failAt: 'none',
     banner: null,
     deliveredCount: 1,
+    live: null,
 
     /* ------------------------------------------------------------------ */
     /* lifecycle                                                          */
@@ -379,6 +413,11 @@ export const useRepeat = create<RepeatState>((set, get) => {
           },
         ],
       });
+
+      // Live mode: ask the server once where consequential steps would land,
+      // so the Ghost Run can say so before anyone approves. Demo Mode never
+      // makes this request.
+      if (!DEMO_MODE) void loadLiveTargets();
     },
 
     reset: () => {
@@ -856,11 +895,19 @@ export const useRepeat = create<RepeatState>((set, get) => {
       set({ activeRun: approved, phase: 'executing', orb: 'executing', runningIndex: 0 });
       pushTimeline({ label: 'Approved by you', origin: 'system', status: 'done' });
 
-      const tracker = new DemoIssueTrackerAdapter({
-        startNumber: state.nextIssueNumber,
-        failAt: state.failAt,
-      });
-      const messaging = new DemoMessagingAdapter({ failAt: state.failAt });
+      // Adapter binding — the only thing that differs between Demo Mode and
+      // live. The executor, the guard and the run are the same object either
+      // way. Live binds a remote adapter only for the services the server
+      // reported as configured; anything else stays in the replica app.
+      const adapterOpts = { startNumber: state.nextIssueNumber, failAt: state.failAt };
+      const tracker =
+        !DEMO_MODE && state.live?.tracker
+          ? new RemoteIssueTrackerAdapter(adapterOpts)
+          : new DemoIssueTrackerAdapter(adapterOpts);
+      const messaging =
+        !DEMO_MODE && state.live?.messaging
+          ? new RemoteMessagingAdapter({ failAt: state.failAt })
+          : new DemoMessagingAdapter({ failAt: state.failAt });
 
       const finished = await executeRun(approved, {
         tracker,

@@ -33,7 +33,7 @@ export type ExecuteOptions = AdapterBundle & {
 async function performAction(
   action: PlannedAction,
   adapters: AdapterBundle,
-  ctx: { createdIssueNumber: number | null },
+  ctx: { createdIssueNumber: number | null; createdIssueId: string | null },
 ): Promise<ActionResult> {
   const started = Date.now();
   const withTiming = (r: ActionResult): ActionResult => ({
@@ -73,8 +73,11 @@ async function performAction(
 
     case 'tracker.assign_owner': {
       const number = ctx.createdIssueNumber ?? Number(action.resolvedParams.issueNumber);
+      // A live tracker has its own identifier for the record it just created;
+      // it travels alongside REPEAT's running number.
+      const id = ctx.createdIssueId ?? undefined;
       return withTiming(
-        await adapters.tracker.assignIssue({ number }, String(action.resolvedParams.owner)),
+        await adapters.tracker.assignIssue({ number, id }, String(action.resolvedParams.owner)),
       );
     }
 
@@ -115,6 +118,7 @@ export async function executeRun(run: AgentRun, options: ExecuteOptions): Promis
 
   const actions = run.proposedActions.map((a) => ({ ...a }));
   let createdIssueNumber: number | null = null;
+  let createdIssueId: string | null = null;
 
   // Resume, do not restart. A retry after a mid-run failure must not repeat
   // work that already succeeded — re-running "create issue" would file a
@@ -124,6 +128,8 @@ export async function executeRun(run: AgentRun, options: ExecuteOptions): Promis
     if (done.action === 'tracker.create_issue') {
       const num = done.result?.data?.number;
       if (typeof num === 'number') createdIssueNumber = num;
+      const id = done.result?.data?.id;
+      if (typeof id === 'string') createdIssueId = id;
     }
   }
 
@@ -140,7 +146,7 @@ export async function executeRun(run: AgentRun, options: ExecuteOptions): Promis
 
     let result: ActionResult;
     try {
-      result = await performAction(action, adapters, { createdIssueNumber });
+      result = await performAction(action, adapters, { createdIssueNumber, createdIssueId });
     } catch (err) {
       result = {
         ok: false,
@@ -168,6 +174,24 @@ export async function executeRun(run: AgentRun, options: ExecuteOptions): Promis
     }
 
     if (action.action === 'tracker.create_issue') {
+      const id = result.data?.id;
+      if (typeof id === 'string') createdIssueId = id;
+
+      // A real tracker gives the ticket a real address. The team message was
+      // planned before that address existed, so it is appended now — the
+      // same correction-after-the-fact as the issue-number rewrite below.
+      const url = result.data?.url;
+      if (adapters.tracker.live && typeof url === 'string' && /^https?:\/\//.test(url)) {
+        for (let j = i + 1; j < actions.length; j += 1) {
+          const later = actions[j];
+          if (typeof later.resolvedParams.teamMessage === 'string' && !later.resolvedParams.teamMessage.includes(url)) {
+            const withLink = `${later.resolvedParams.teamMessage} ${url}`;
+            if (later.detail === later.resolvedParams.teamMessage) later.detail = withLink;
+            later.resolvedParams = { ...later.resolvedParams, teamMessage: withLink, issueUrl: url };
+          }
+        }
+      }
+
       const num = result.data?.number;
       if (typeof num === 'number') {
         createdIssueNumber = num;
