@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        width: 268px;
+        padding: 14px;
+        background: #070a11;
+        color: #e6edf6;
+        font: 13px/1.45 ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+      }
+      h1 {
+        margin: 0 0 2px;
+        font-size: 12px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #f2f6fb;
+      }
+      p { margin: 0; color: #7386a0; font-size: 11.5px; }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.07);
+      }
+      .status { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+      .dot { width: 6px; height: 6px; border-radius: 999px; background: #2dd4a7; }
+      .dot.off { background: #566a84; }
+      button {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        color: #e6edf6;
+        border-radius: 7px;
+        padding: 5px 10px;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      button:hover { border-color: rgba(255, 255, 255, 0.22); }
+      ul { margin: 10px 0 0; padding-left: 15px; color: #566a84; font-size: 11px; }
+      li { margin-bottom: 3px; }
+    </style>
+  </head>
+  <body>
+    <h1>REPEAT Observer</h1>
+    <p>Records what an action meant, never how it was performed.</p>
+
+    <div class="row">
+      <span class="status"><span class="dot" id="dot"></span><span id="label">Observing</span></span>
+      <button id="toggle">Pause</button>
+    </div>
+
+    <ul>
+      <li>No passwords or payment fields</li>
+      <li>No coordinates or keystrokes</li>
+      <li>No query strings</li>
+      <li>Auth pages skipped entirely</li>
+    </ul>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

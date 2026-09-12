@@ -1,0 +1,39 @@
+{
+  "name": "repeat",
+  "version": "1.0.0",
+  "private": true,
+  "description": "REPEAT — Show it once. Never do it again. An AI layer that learns repetitive workflows by watching how you already work.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "node scripts/next-prod.mjs build",
+    "start": "node scripts/next-prod.mjs start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "verify": "node --experimental-strip-types --no-warnings --import ./scripts/alias-loader.mjs scripts/verify-engine.ts",
+    "check": "npm run typecheck && npm run verify && npm run lint"
+  },
+  "dependencies": {
+    "@xyflow/react": "^12.11.6",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.43.0",
+    "lucide-react": "^1.45.0",
+    "next": "^15.5.25",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^2.6.1",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.5.6",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.25",
+    "postcss": "^8.5.28",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^5.9.3"
+  }
+}

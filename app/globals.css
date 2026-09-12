@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    --grid-line: rgba(255, 255, 255, 0.028);
+    --halo-cyan: rgba(56, 220, 255, 0.16);
+    --halo-iris: rgba(139, 124, 255, 0.14);
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 text-mist-100 font-sans antialiased;
+    font-feature-settings: 'cv05' 1, 'ss01' 1, 'tnum' 0;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* The product ground: a very faint engineering grid plus two soft halos.
+     Fixed so panels feel like they float above one continuous surface. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 56px 56px, 56px 56px;
+    mask-image: radial-gradient(ellipse 120% 80% at 50% 0%, black 20%, transparent 78%);
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(760px 420px at 14% -8%, var(--halo-cyan), transparent 70%),
+      radial-gradient(720px 460px at 86% 4%, var(--halo-iris), transparent 72%);
+  }
+
+  ::selection {
+    background: rgba(56, 220, 255, 0.26);
+    color: #f2f6fb;
+  }
+
+  /* Restrained scrollbars — they appear inside panels constantly. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+    background-clip: content-box;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  [role='button']:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 1.5px rgba(56, 220, 255, 0.75),
+      0 0 0 4px rgba(56, 220, 255, 0.16);
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  /* A glass panel. One definition so every surface in the product matches. */
+  .panel {
+    @apply relative rounded-panel border border-edge-soft bg-ink-850/70 shadow-panel backdrop-blur-xl;
+  }
+
+  .panel-flat {
+    @apply relative rounded-panel border border-edge-faint bg-ink-900/60;
+  }
+
+  /* A replica application window. */
+  .app-window {
+    @apply relative flex min-h-0 flex-col overflow-hidden rounded-window border border-edge-soft bg-ink-900/80 shadow-panel backdrop-blur-md;
+  }
+
+  .app-window-chrome {
+    @apply flex h-9 shrink-0 items-center gap-2 border-b border-edge-faint bg-ink-800/70 px-3;
+  }
+
+  /* Section label: the small tracked uppercase caption used everywhere. */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.16em] text-mist-500;
+  }
+
+  .stat-value {
+    @apply font-mono text-[1.35rem] leading-none tracking-tight text-mist-50;
+  }
+
+  /* Hairline divider that fades at both ends. */
+  .hairline {
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1) 18%,
+      rgba(255, 255, 255, 0.1) 82%,
+      transparent
+    );
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Top highlight that makes a dark surface read as glass rather than paint. */
+  .surface-sheen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), transparent 42%);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Used by the collapse moment so converging chips render above panels. */
+  .z-stage {
+    z-index: 60;
+  }
+}
+
+/* React Flow surface overrides — keep the graph inside our design language. */
+.react-flow {
+  --xy-background-color: transparent;
+  background: transparent;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__edge-path {
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 1.35;
+}
+
+.react-flow__edge.is-active .react-flow__edge-path {
+  stroke: rgba(56, 220, 255, 0.85);
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 5px rgba(56, 220, 255, 0.55));
+}
+
+.react-flow__edge.is-done .react-flow__edge-path {
+  stroke: rgba(45, 212, 167, 0.6);
+}
+
+.react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.react-flow__node {
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

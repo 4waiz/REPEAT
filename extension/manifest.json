@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "REPEAT Observer",
+  "version": "1.0.0",
+  "description": "Turns high-level browser interactions into semantic workflow events for REPEAT. Never captures passwords, payment fields or keystrokes.",
+  "minimum_chrome_version": "116",
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["http://localhost:3000/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*", "https://*/*"],
+      "exclude_matches": [
+        "https://*/*signin*",
+        "https://*/*login*",
+        "https://*/*password*",
+        "https://*/*checkout*",
+        "https://*/*payment*",
+        "https://accounts.google.com/*",
+        "https://*.stripe.com/*",
+        "https://*.paypal.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "REPEAT Observer",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}
