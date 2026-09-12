@@ -369,6 +369,7 @@ export function mergeUnderstanding(
   fallback: IssueUnderstanding,
   payload: UnderstandingPayload,
   model?: string,
+  provider?: IssueUnderstanding['provider'],
 ): IssueUnderstanding {
   return {
     ...fallback,
@@ -383,6 +384,7 @@ export function mergeUnderstanding(
     confidence: payload.confidence,
     source: 'llm',
     model,
+    provider,
   };
 }
 

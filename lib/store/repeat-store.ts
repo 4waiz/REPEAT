@@ -259,7 +259,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
       pushTimeline({
         label: provenance.usedLlm ? `Report read by ${provenance.model}` : 'Report read by the deterministic classifier',
         detail: provenance.usedLlm
-          ? `via OpenRouter · validated · evidence grounded in the report${
+          ? `via ${provenance.provider === 'openai' ? 'OpenAI' : 'OpenRouter'} · validated · evidence grounded in the report${
               provenance.llmLatencyMs ? ` · ${(provenance.llmLatencyMs / 1000).toFixed(1)}s` : ''
             }`
           : provenance.fallbackReason,

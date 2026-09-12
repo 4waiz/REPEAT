@@ -25,7 +25,7 @@ import { detect } from '@/lib/patterns/detector';
 import { compilePattern } from '@/lib/patterns/compiler';
 import { planRun } from '@/lib/agents/ghost-runner';
 import { OWNER_CONFIDENCE_FLOOR } from '@/lib/demo/config';
-import { openRouterConfig } from '@/lib/llm/openrouter';
+import { llmConfig } from '@/lib/llm/openrouter';
 import { exaApiKey } from '@/lib/research/exa';
 import { formatPercent, hostnameOf } from '@/lib/utils';
 
@@ -46,7 +46,7 @@ function section(title: string) {
 function describe(name: string, live: LiveUnderstanding) {
   const { understanding: u, provenance: p } = live;
   console.log(`  ${name}: area=${u.area} category=${u.category} severity=${u.severity} conf=${formatPercent(u.confidence)}`);
-  console.log(`         understood by: ${p.usedLlm ? `${p.model} via OpenRouter (${p.llmLatencyMs}ms)` : `deterministic — ${p.fallbackReason}`}`);
+  console.log(`         understood by: ${p.usedLlm ? `${p.model} via ${p.provider} (${p.llmLatencyMs}ms)` : `deterministic — ${p.fallbackReason}`}`);
   console.log(`         title: ${u.issueTitle}`);
   console.log(`         evidence: ${u.evidence.join(' | ')}`);
   if (p.researchQuery) console.log(`         research query: ${p.researchQuery}`);
@@ -59,14 +59,14 @@ function describe(name: string, live: LiveUnderstanding) {
 }
 
 async function main() {
-  const llm = openRouterConfig();
+  const llm = llmConfig();
   const exa = exaApiKey();
 
   section('0. Configuration');
-  console.log(`  OPENROUTER_API_KEY: ${llm ? 'set' : 'missing'}${llm ? `  model=${llm.model}${llm.fallbackModels.length ? ` fallbacks=${llm.fallbackModels.join(',')}` : ''}` : ''}`);
+  console.log(`  model provider:     ${llm ? `${llm.provider}  model=${llm.model}${llm.fallbackModels.length ? ` fallbacks=${llm.fallbackModels.join(',')}` : ''}` : 'missing (set OPENROUTER_API_KEY or OPENAI_API_KEY)'}`);
   console.log(`  EXA_API_KEY:        ${exa ? 'set' : 'missing'}`);
   if (!llm && !exa) {
-    console.log('\n  Nothing to test. Copy .env.example to .env and add OPENROUTER_API_KEY and EXA_API_KEY.');
+    console.log('\n  Nothing to test. Copy .env.example to .env and add OPENROUTER_API_KEY (or OPENAI_API_KEY) and EXA_API_KEY.');
     process.exit(1);
   }
 

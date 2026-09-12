@@ -204,7 +204,7 @@ export function GhostRunPanel({
                 label="Understood by"
                 value={
                   u.source === 'llm'
-                    ? `${u.model ?? 'language model'} via OpenRouter · validated`
+                    ? `${u.model ?? 'language model'} via ${u.provider === 'openai' ? 'OpenAI' : 'OpenRouter'} · validated`
                     : 'deterministic classifier'
                 }
               />

@@ -144,6 +144,8 @@ export type IssueUnderstanding = {
   source: 'deterministic' | 'llm';
   /** The model behind an `llm` understanding, e.g. "openai/gpt-4.1-mini". */
   model?: string;
+  /** Which service the model was reached through. */
+  provider?: 'openrouter' | 'openai';
   /** Related context from the research step, when it ran. */
   references?: IssueReference[];
 };

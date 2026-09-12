@@ -1,5 +1,5 @@
 import type { IssueReference, IssueUnderstanding, MailMessage } from '@/types';
-import { completeJson, openRouterConfig, type OpenRouterConfig } from '@/lib/llm/openrouter';
+import { completeJson, llmConfig, type LlmConfig, type LlmProvider } from '@/lib/llm/openrouter';
 import { buildResearchQuery, exaApiKey, searchRelated } from '@/lib/research/exa';
 import {
   UNDERSTANDING_SYSTEM_PROMPT,
@@ -34,8 +34,10 @@ export const RESEARCH_TIMEOUT_MS = 6000;
 
 export type UnderstandingProvenance = {
   usedLlm: boolean;
-  /** The model that answered, as reported by OpenRouter. */
+  /** The model that answered, as reported by the provider. */
   model?: string;
+  /** OpenRouter (default) or OpenAI direct. */
+  provider?: LlmProvider;
   llmLatencyMs?: number;
   /** Why the deterministic classifier was used instead. */
   fallbackReason?: string;
@@ -70,7 +72,7 @@ export async function understandLive(
   const deterministic = understandDeterministic(message);
 
   const [model, research] = await Promise.all([
-    runModelPass(openRouterConfig(env), message, deterministic, options.llmTimeoutMs ?? LLM_TIMEOUT_MS),
+    runModelPass(llmConfig(env), message, deterministic, options.llmTimeoutMs ?? LLM_TIMEOUT_MS),
     runResearchPass(exaApiKey(env), message, deterministic, options.researchTimeoutMs ?? RESEARCH_TIMEOUT_MS),
   ]);
 
@@ -84,6 +86,7 @@ export async function understandLive(
     provenance: {
       usedLlm: model.understanding.source === 'llm',
       model: model.understanding.model,
+      provider: model.understanding.provider,
       llmLatencyMs: model.latencyMs,
       fallbackReason: model.fallbackReason,
       usedResearch: research.references.length > 0,
@@ -100,12 +103,14 @@ export async function understandLive(
 /* ------------------------------------------------------------------------ */
 
 async function runModelPass(
-  config: OpenRouterConfig | null,
+  config: LlmConfig | null,
   message: MailMessage,
   deterministic: IssueUnderstanding,
   timeoutMs: number,
 ): Promise<{ understanding: IssueUnderstanding; latencyMs?: number; fallbackReason?: string }> {
-  if (!config) return { understanding: deterministic, fallbackReason: 'OPENROUTER_API_KEY is not set' };
+  if (!config) {
+    return { understanding: deterministic, fallbackReason: 'Neither OPENROUTER_API_KEY nor OPENAI_API_KEY is set' };
+  }
 
   try {
     const completion = await completeJson(config, {
@@ -117,7 +122,7 @@ async function runModelPass(
     // cites evidence that is not in the report, is refused in full.
     const payload = validateModelAnswer(completion.text, message);
     return {
-      understanding: mergeUnderstanding(deterministic, payload, completion.model),
+      understanding: mergeUnderstanding(deterministic, payload, completion.model, config.provider),
       latencyMs: completion.latencyMs,
     };
   } catch (error) {
