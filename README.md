@@ -443,10 +443,27 @@ deterministic answer byte-for-byte.
 
 [`extension/`](extension) is a Manifest V3 extension that is the real version of
 the observation layer the workspace simulates. Load it unpacked via
-`chrome://extensions` → Developer mode → Load unpacked → select `extension/`.
+`chrome://extensions` → Developer mode → Load unpacked → select `extension/`
+(reload it there after any change to its files).
 
 It turns DOM interactions into semantic events and posts them to
-`POST /api/observe`. What it will not do:
+`POST /api/observe`. Three sites get a dedicated extractor
+([`extension/sites/`](extension/sites)):
+
+| Site | What it recognises | How |
+|---|---|---|
+| Gmail | a message opened → `mail.read_message` with thread/message ids, subject, sender | Gmail's stable attributes (`data-legacy-thread-id`, `data-legacy-message-id`, `span[email]`); the body never leaves the page — REPEAT reads it through its own Gmail connector |
+| Jira Cloud | the create dialog: priority/labels/assignee picks, the Create click with summary + description, and the success flag's `/browse/KEY` link → `tracker.create_issue` confirmed | accessible names and roles inside `[role=dialog]`; the Create click and the confirmation are merged into one action |
+| ClickUp | the Create task click and the new task's `/t/<id>` URL | trigger only — ClickUp's DOM is undocumented, so the API confirms the board |
+
+In live mode the workspace polls `/api/observe` and pushes each event through
+the same `observe()` path as the replica apps, so triaging in the real tabs is
+learned exactly like clicking through the replicas. The popup shows the last
+events captured, whether REPEAT received them, and a **Finish observation**
+button. The extension's HTML is checked by loading it in your own signed-in
+Chrome — there is no other honest way to test a Gmail extractor.
+
+What it will not do:
 
 - read a password, payment or sensitive-named input — the value is never touched
 - record coordinates, key codes or CSS selectors
