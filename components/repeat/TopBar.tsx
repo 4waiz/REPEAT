@@ -1,11 +1,12 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
-import { Command, Shield, Volume2, VolumeX, Workflow } from 'lucide-react';
+import { Command, RotateCcw, Shield, Volume2, VolumeX, Workflow } from 'lucide-react';
 import { useRepeat } from '@/lib/store/repeat-store';
 import { RepeatMark } from './Orb';
 import { Dot, Kbd } from '@/components/ui/primitives';
-import { formatDuration } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 import { DEMO_MODE } from '@/lib/demo/config';
 
 /**
@@ -15,6 +16,8 @@ import { DEMO_MODE } from '@/lib/demo/config';
  * metrics worth glancing at mid-demo.
  */
 export function TopBar({ onOpenPalette }: { onOpenPalette: () => void }) {
+  const reset = useRepeat((s) => s.reset);
+  const [confirmReset, setConfirmReset] = React.useState(false);
   const phase = useRepeat((s) => s.phase);
   const orb = useRepeat((s) => s.orb);
   const metrics = useRepeat((s) => s.metrics);
@@ -86,6 +89,30 @@ export function TopBar({ onOpenPalette }: { onOpenPalette: () => void }) {
         <span className="h-6 w-px bg-edge-faint" />
 
         <div className="flex items-center gap-1">
+          {/* Start over. Two clicks on purpose: this throws away every
+              observation, and a stray click mid-run would be unrecoverable. */}
+          <button
+            onClick={() => {
+              if (!confirmReset) {
+                setConfirmReset(true);
+                return;
+              }
+              setConfirmReset(false);
+              reset();
+            }}
+            onBlur={() => setConfirmReset(false)}
+            title="Clear every observation and re-read the connected accounts"
+            className={cn(
+              'inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition',
+              confirmReset
+                ? 'bg-amber-400/15 text-amber-300'
+                : 'text-mist-400 hover:bg-white/[0.05] hover:text-mist-100',
+            )}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">{confirmReset ? 'Clear everything?' : 'Reset'}</span>
+          </button>
+
           <Link
             href="/workflows"
             className="inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-mist-400 transition hover:bg-white/[0.05] hover:text-mist-100"

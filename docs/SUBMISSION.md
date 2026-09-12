@@ -18,105 +18,189 @@ REPEAT
 ```markdown
 **REPEAT — Show it once. Never do it again.**
 
-Automation normally begins by asking a human to document their workflow: pick a
-trigger, add conditions, wire up actions, test it. For everyday work the
-describing costs more than the doing, so it never gets automated. REPEAT asks a
-different question — what if the workflow documented itself?
+REPEAT is an agent that learns repetitive workflows by observing how people
+already work, instead of asking them to describe or program those workflows
+first.
 
-REPEAT is an agent that lives *inside* the tools where work already happens. Our
-environment is the support-triage desktop: an email client, an issue tracker and
-a team chat, side by side in one workspace. The agent has no chat input. You
-never type a prompt. **Your behaviour is the prompt.**
+**The problem: customer support runs on repetition.**
 
-**The workflow.** A customer emails a bug report. A human reads it, works out
-what is actually broken, writes an engineering ticket, labels it, prioritises it,
-decides who owns it, files it, and tells the team. Measured by our own effort
-model that is 13 semantic actions across 3 applications, ~4m 43s of attention,
-every single time.
+Every support desk has the same bottleneck. A message arrives from a customer
+in plain prose. Someone has to read it, work out what is actually wrong, decide
+which department owns it, judge how urgent it is, open a ticket in the tracker
+with the right labels and priority, assign the correct person, tell that
+person's team, and reply to the customer with a reference.
 
-**What REPEAT does.** Run 1: you triage by hand; REPEAT observes. Run 2: you do
-it again; confidence climbs live (63% → 96%). It then says **Pattern
-discovered** — 13 manual actions → 1 approval — and collapses the five observed
-steps into one reusable agent. Run 3: a third bug arrives and you touch nothing.
-REPEAT detects the trigger and opens a **Ghost Run**: a fully resolved plan that
-has changed nothing, showing every proposed action, its permission class, the
-risk level, and the literal phrases from the email that justified its reading.
-You approve once; it executes and verifies.
+None of that is difficult. All of it is repetitive, and it happens tens or
+hundreds of times a day. The cost is not the thinking. The cost is:
 
-**Why this cannot be a chatbot.** A chatbot must be told. REPEAT is never told
-anything — it only ever sees what you did. The environment *is* the interface:
-the observation, the pattern, the plan and the result all happen in the same
-three windows where the work lives, so the automation is legible in context
-rather than described in a transcript.
+- **The copy-paste tax.** The same facts are retyped into three different
+  tools. By our own effort model, one triage is 13 separate actions across
+  three applications and roughly five minutes of unbroken attention.
+- **Routing knowledge lives in people's heads.** That a duplicate charge is
+  Billing, and a 504 on the reports endpoint is Technical Support, is tribal
+  knowledge held by whoever has been there longest. New agents misroute for
+  weeks, and every misroute costs a customer another wait.
+- **First response is where SLAs are lost.** The acknowledgement reply is the
+  step that quietly gets skipped when the queue is deep — so the customer
+  hears nothing while their ticket sits perfectly filed.
+- **The work is too small to automate and too frequent to ignore.**
+  Conventional automation asks the support lead to stop working, document the
+  process, pick a trigger, wire conditions and test it. For a five-minute task,
+  describing it costs more than doing it. So it never gets automated, and the
+  team absorbs it forever.
 
-**The innovation — and the hard part.** Both training bugs in our demo happen to
-be backend bugs assigned to Umar, so the `owner` field never varies. A naive
-compiler diffs the observations, sees a constant, and bakes in "always assign
-Umar" — that is a macro, and it fails the moment work changes. So in REPEAT
-constants must earn it: a field is only constant when the human **authored** it
-*and* no known rule already derives it. Anything computed from the trigger stays
-bound even when every sample agreed, because two identical samples are one
-coincidence, not evidence. The UI says so in words: *"Owner was Umar in every
-observation, but it is consistent with the rule area → owner, so it is bound to
-Engineering area rather than memorised."* Consequently the third bug — a
-**frontend** bug, an area REPEAT has never seen — is reclassified and rerouted
-to **Noor** on a rule, not a memory. Delete the routing rule and it stops
-working; change the email text and it routes elsewhere.
+REPEAT deletes that setup cost. The team keeps triaging exactly as they do
+today. After the second time, the workflow already exists as an agent.
 
-**Technical execution.** Next.js 15 (App Router) · React 19 · TypeScript strict
-· Tailwind CSS · Framer Motion · React Flow (@xyflow/react) · Zustand · Zod ·
-Lucide. ~11,100 lines of TypeScript. The engine is a real pipeline with separated
-concerns: Observer → Semantic Event Normalizer → Trace Store → Pattern Detector →
-Pattern Compiler → Workflow Agent → Ghost Runner → Policy/Approval Layer →
-Executor → Verifier → Activity Log. Pattern detection is deterministic and
-inspectable — normalised Levenshtein over action verbs (0.55), Jaccard over the
-app set (0.20), bag-of-words cosine over semantic intent (0.25) — with no trained
-model, and every number is shown to the user. Reported confidence is discounted
-for sample size so it never displays a fabricated-looking 100%. The event model
-has **no field capable of holding a coordinate**: REPEAT records `mail.read_message`,
-never `click x=531 y=322`. It also names latent steps the human never clicked —
-when prose becomes a structured title, labels and a priority, an "understand"
-step demonstrably happened, so REPEAT labels it as inferred with lower confidence.
+**The environment.**
 
-**Safety and UX.** A policy layer — not the model — classifies every action by
-consequence; `create_external` and `send_message` require approval and `payment`
-is blocked outright. The guard runs before every individual action, so no code
-path can bypass it; Execute is idempotent (a nervous double-click cannot file two
-tickets); a failure stops the run, preserves completed steps, marks the rest *not
-attempted*, and never reports a failed step as successful; retry **resumes rather
-than restarts**, so a recovered run cannot duplicate a ticket. The Ghost Run
-shows evidence, structured interpretation, permissions, risk and expected
-result — never model reasoning. A 58-assertion headless self-test (`npm run
-verify`) exercises the whole pipeline in about a second.
+Our chosen environment is a support desk made of three tools people already use
+every day: email, an issue tracker and team chat. The agent lives across these
+tools and watches the meaning of the work taking place between them. There is
+no chatbot and no prompt box. The user's behaviour is the prompt.
 
-**Live mode: OpenRouter + Exa.** With `DEMO_MODE=false`, the moment a learned
-trigger fires REPEAT does its own reading of the new report through two
-concurrent passes: a model via **OpenRouter** (default `openai/gpt-4.1-mini`,
-any model id works) returns the structured interpretation, and **Exa** searches
-for related public context — docs, similar issues, status posts — that is
-attached to the Ghost Run and the ticket body. The run is then re-planned
-from the model's understanding through the same planner, policy and routing
-rules, so the Umar→Noor reroute is still a rule, not a memory. The model path
-is Zod-validated, every cited piece of evidence must be a literal quote from
-the report or the whole answer is refused, the model may answer `unresolved`
-(which routes to human review), and it times out at 8s. The research step
-sends only the symptom phrase — never the sender, their address or the message
-body — and the exact query is shown in the timeline. `npm run verify:live`
-proves all of this against the real services, including that a bad key
-degrades byte-for-byte to the deterministic answer.
+**What happens.**
 
-**Reliability.** Demo Mode is the default: zero network calls, zero API keys,
-deterministic IDs and classification, system fonts and synthesised WebAudio
-instead of loaded assets. The demo renders identically with the Wi-Fi off.
-GitHub and Slack adapters are wired in behind the same interfaces for live
-execution. There is no path where a model or search failure reaches the UI as
-an error.
+A customer sends a report by email. A human reads it, understands what is
+wrong, determines the department and severity, creates a ticket, assigns the
+correct owner, notifies that department's channel, and replies to the customer.
+REPEAT observes this as semantic actions — `mail.read_message`,
+`issue.classify`, `issue.create`, `chat.notify_team`, `mail.reply_customer` —
+rather than mouse coordinates or blindly replayed clicks.
 
-Also included: a Manifest V3 Chrome extension that is the real version of the
-observation layer (never touches password or payment fields, records no
-coordinates, skips any page with a password input, strips query strings), and a
-`/api/observe` endpoint that re-validates and re-redacts everything it receives
-because a browser is not a trusted source.
+The first time the workflow happens, REPEAT observes. The second time, it
+compares the new sequence against the previous one and detects a repeated
+pattern, with confidence climbing live in front of the user: 63% → 73% → 77% →
+96%. Once confidence is high enough, REPEAT names the workflow and compiles the
+observed steps into a reusable triage agent. Thirteen manual actions become one
+approval.
+
+When a third message arrives, the user does nothing.
+
+REPEAT recognises the trigger and opens a **Ghost Run** — a safe preview of
+exactly what it intends to do before anything outside the workspace changes.
+The user sees the extracted issue, the classification, the selected owner, the
+ticket that will be created, the channel that will be notified, the reply that
+will be sent, the permissions required, the risk level, and the literal
+sentences from the email that justify each reading. One approval executes and
+verifies the run.
+
+**Why this cannot be a chatbot.**
+
+A chatbot must first be told which workflow to perform. REPEAT is never told
+anything — it only ever sees what was done. The inbox, the tracker and the chat
+are not wrappers around an AI conversation; they are the agent's observation
+and action space. The pattern is discovered where the work happens and the plan
+is reviewed in the same three windows, so the automation stays legible in
+context instead of being described in a transcript.
+
+**Gmail, ClickUp and Slack are examples, not the product.**
+
+We run the demo against a real Gmail inbox, a real ClickUp list and a real
+Slack workspace because those are recognisable and independently verifiable — a
+judge can watch a ticket appear in ClickUp and a message land in Slack. But
+they are three instances of a general mechanism, not the feature set.
+
+What REPEAT learns is a sequence of semantic intents: read the inbound message,
+understand it, create a record, assign an owner, notify the right audience,
+reply to the sender. Each intent is fulfilled by a swappable adapter behind one
+interface. Gmail could be Outlook, Front or Zendesk. ClickUp could be Jira,
+Linear or GitHub Issues — our Chrome extension already extracts semantic
+context from Gmail, Jira and ClickUp. Slack could be Teams. Nothing in the
+learned pattern names a vendor.
+
+That is why the same mechanism carries to other repetitive desks: refunds,
+returns, onboarding, invoice approval, lead routing, incident escalation. Any
+work shaped like "read something, decide something, record it, tell someone" is
+the same shape. We show three tools because a demo needs surfaces; the
+mechanism is the product.
+
+**The innovation: it learns the rule, not the values.**
+
+REPEAT learns what changes and what stays constant instead of memorising
+previous values.
+
+Both training examples in our demo are Technical Support issues assigned to
+Umar, so the owner field never varies across the observations. A naive macro
+diffs the two runs, sees a constant, and bakes in "always assign Umar" — which
+breaks the moment real work arrives. REPEAT accepts a value as constant only
+when a human **authored** it *and* no known rule already derives it. Ownership
+is derivable from the department, so it stays bound to the classification even
+though every observation agreed. The interface says so in words rather than
+leaving it implied.
+
+The third message is a duplicate-billing complaint — a department REPEAT has
+never observed being handled. It reclassifies the issue as Billing, routes it
+to Awaiz, and announces it in #billing-finance instead of #technical-support.
+Owner *and* audience both adapt, from rules rather than memory, to a
+combination that never appeared in the examples it learned from.
+
+A fourth message is deliberately vague — "Something went wrong yesterday."
+REPEAT classifies it as unresolved at about 32% confidence and refuses to route
+it, handing it back to a human. Knowing when not to act is part of the
+workflow, and for a support team it is the part that earns trust.
+
+**Technical execution.**
+
+Next.js 15 (App Router), React 19, TypeScript in strict mode, Tailwind CSS,
+Framer Motion, React Flow (@xyflow/react), Zustand, Zod and Lucide. CopilotKit
+with a self-hosted AG-UI runtime streams the Ghost Run as generative-UI tool
+calls — REPEAT's planner runs as a custom AG-UI agent, with no chat component
+mounted anywhere. Live surfaces use the Gmail API over OAuth (with ImapFlow and
+mailparser for the IMAP path), the ClickUp API, and a Slack bot token so the
+agent can post per department rather than into a single fixed webhook channel.
+
+The engine is a pipeline with separated concerns: Observer → Semantic Event
+Normalizer → Trace Store → Pattern Detector → Pattern Compiler → Workflow Agent
+→ Ghost Runner → Policy and Approval Layer → Executor → Verifier → Activity
+Log.
+
+Pattern detection is deterministic and inspectable, with no trained model:
+normalised Levenshtein similarity over action verbs (0.55), Jaccard similarity
+over the application set (0.20), and bag-of-words cosine similarity over
+semantic intent (0.25), combined into a confidence score that is discounted for
+sample size so it never displays a fabricated-looking 100%. Every number is
+shown to the user. The event model has no field capable of holding a
+coordinate.
+
+**Safety and trust.**
+
+Safety is handled outside the model. A policy layer classifies every action by
+consequence: reading and analysis run automatically, creating external records
+and sending messages require approval, and payments are blocked outright in the
+prototype. The guard runs before each individual action, so no code path can
+bypass it. Execution is idempotent — a nervous double-click cannot file two
+tickets. A failure stops the run, preserves the steps that completed, marks the
+rest *not attempted*, and never reports a failed step as successful. Retry
+resumes from the failed action rather than restarting, so a recovered run
+cannot duplicate a ticket.
+
+The Manifest V3 Chrome extension is the real version of the observation layer.
+It records semantic context instead of coordinates, never touches password or
+payment fields, skips any page with a password input, strips query strings, and
+posts through a server endpoint that re-validates and re-redacts everything it
+receives, because a browser is not a trusted source.
+
+**Reliability.**
+
+A fully deterministic Demo Mode is the default and needs no external APIs, no
+internet and no keys: the complete experience of observing, learning,
+previewing and executing runs offline with identical results. A 58-assertion
+headless self-test (`npm run verify`) exercises the entire pipeline in about a
+second — including the generalisation, the refusal, the policy guard and
+resume-not-restart — and a separate live self-test checks the real services.
+
+**The value.**
+
+Most repetitive work never gets automated because documenting and configuring
+it costs more than doing it. REPEAT removes that cost. Instead of asking people
+to stop working and explain their process to software, it lets them carry on
+working.
+
+Repeated behaviour becomes a pattern. The pattern becomes a workflow. The
+workflow becomes an agent.
+
+**REPEAT — Show it once. Never do it again.**
 ```
 
 ---

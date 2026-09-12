@@ -195,12 +195,17 @@ export class SlackBotMessagingAdapter implements MessagingAdapter {
       const data = (await response.json()) as { ok?: boolean; error?: string; channel?: string };
       if (!response.ok || data.ok !== true) {
         const reason = data.error ?? `HTTP ${response.status}`;
+        const channel = `#${input.channel.replace(/^#/, '')}`;
+        // Slack's error codes are terse and say nothing about which channel
+        // they mean. Naming it and the fix turns a dead end into one action.
         const hint =
-          data.error === 'channel_not_found'
-            ? ` — no #${input.channel} in this workspace`
-            : data.error === 'not_in_channel'
-              ? ` — invite the app to #${input.channel}, or grant chat:write.public`
-              : '';
+          data.error === 'is_archived'
+            ? ` — ${channel} is archived; unarchive it in Slack, then retry`
+            : data.error === 'channel_not_found'
+              ? ` — there is no ${channel} in this workspace; create it, then retry`
+              : data.error === 'not_in_channel'
+                ? ` — the app is not in ${channel}; invite it, or grant chat:write.public`
+                : ` — posting to ${channel}`;
         return fail(this.name, `Slack refused the message: ${reason}${hint}`, Date.now() - started);
       }
       return ok(

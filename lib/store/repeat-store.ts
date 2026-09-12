@@ -649,6 +649,15 @@ export const useRepeat = create<RepeatState>((set, get) => {
         banner: null,
         deliveredCount: 1,
       });
+
+      // Live mode clears to nothing, because live surfaces hold no seed data.
+      // Refill from the real accounts immediately rather than waiting on the
+      // 20s poll — an empty Gmail window is the last thing anyone wants on
+      // screen right after hitting reset in front of a room.
+      if (!DEMO_MODE) {
+        void loadMail(true);
+        void get().refreshSurfaces();
+      }
     },
 
     /* ------------------------------------------------------------------ */
@@ -823,8 +832,10 @@ export const useRepeat = create<RepeatState>((set, get) => {
       get().observe('tracker.create_issue', { issueNumber: number });
 
       // Pre-compute the notification the human is about to write.
-      if (understanding) {
-        const owner = composer.assignee || routeOwner(understanding.area).owner || 'unassigned';
+      const owner = understanding
+        ? composer.assignee || routeOwner(understanding.area).owner || 'unassigned'
+        : null;
+      if (understanding && owner) {
         set({
           chatDraft: composeTeamMessage({ understanding, issueNumber: number, owner }),
           customerReplyDraft: composeCustomerReply({
@@ -833,6 +844,48 @@ export const useRepeat = create<RepeatState>((set, get) => {
             owner,
           }),
         });
+      }
+
+      // Live mode: a person filing a ticket by hand files it in the REAL
+      // tracker, through the same endpoint and the same policy check the
+      // agent uses later. The local row appears first and is reconciled when
+      // the write returns, so observation never waits on the network.
+      if (!DEMO_MODE && get().live?.tracker) {
+        void (async () => {
+          const adapter = new RemoteIssueTrackerAdapter({ startNumber: number });
+          const created = await adapter.createIssue({
+            title: composer.title,
+            body: composer.body,
+            labels: composer.labels,
+            priority: (composer.priority || 'medium') as IssueSeverity,
+          });
+          if (!created.ok) {
+            pushTimeline({
+              label: 'Ticket was not filed in the real tracker',
+              detail: created.error ?? 'The tracker refused the request',
+              origin: 'system',
+              status: 'failed',
+              app: 'tracker',
+            });
+            return;
+          }
+          const data = (created.data ?? {}) as { id?: string; url?: string };
+          const realRef = data.id ?? `#${number}`;
+          set((st) => ({
+            issues: st.issues.map((i) =>
+              i.id === issue.id ? { ...i, key: data.id, url: data.url, provider: 'clickup' as const } : i,
+            ),
+            // The acknowledgement must quote the reference the customer can
+            // actually find, which only exists once the tracker has answered.
+            customerReplyDraft:
+              understanding && owner
+                ? composeCustomerReply({ understanding, ticketRef: realRef, owner })
+                : st.customerReplyDraft,
+          }));
+          if (composer.assignee) {
+            await adapter.assignIssue({ number, id: data.id }, composer.assignee);
+          }
+        })();
       }
     },
 
@@ -864,6 +917,25 @@ export const useRepeat = create<RepeatState>((set, get) => {
       };
       set({ chat: [...state.chat, message], chatDraft: '' });
       get().observe('chat.notify_team', { channel: state.activeChannel });
+
+      // The same message, posted to the real desk.
+      if (!DEMO_MODE && get().live?.messaging) {
+        void (async () => {
+          const posted = await new RemoteMessagingAdapter().postMessage({
+            channel: state.activeChannel,
+            body: message.body,
+          });
+          if (!posted.ok) {
+            pushTimeline({
+              label: 'Notification was not posted to the real channel',
+              detail: posted.error ?? 'Messaging refused the request',
+              origin: 'system',
+              status: 'failed',
+              app: 'chat',
+            });
+          }
+        })();
+      }
     },
 
     /**
@@ -878,12 +950,33 @@ export const useRepeat = create<RepeatState>((set, get) => {
       const mail = state.inbox.find((m) => m.id === state.selectedMailId);
       if (!mail) return;
 
+      const body = state.customerReplyDraft;
       set({ customerReplyDraft: '' });
       get().observe('mail.reply_customer', {
         customerEmail: mail.fromEmail,
         customerName: mail.from,
         messageId: mail.id,
       });
+
+      // Really answer them. Learning does not wait on delivery: what REPEAT
+      // observed is valid whether or not the network cooperated.
+      if (!DEMO_MODE && get().mailSurface) {
+        void (async () => {
+          const sent = await new RemoteCustomerMailAdapter().replyToCustomer({
+            messageId: mail.id,
+            customerEmail: mail.fromEmail,
+            body,
+          });
+          pushTimeline({
+            label: sent.ok ? `Replied to ${mail.from}` : 'Reply was not sent',
+            detail: sent.ok ? sent.summary : (sent.error ?? 'Gmail refused the send'),
+            origin: sent.ok ? 'observed' : 'system',
+            status: sent.ok ? 'done' : 'failed',
+            app: 'mail',
+          });
+        })();
+      }
+
       // The workflow is finished; hand over to the detector.
       get().completeTrace();
     },
