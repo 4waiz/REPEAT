@@ -89,9 +89,11 @@ export class RemoteIssueTrackerAdapter implements IssueTrackerAdapter {
     this.nextNumber += 1;
     const remoteId = typeof result.data?.id === 'string' ? result.data.id : makeId('issue');
     const url = typeof result.data?.url === 'string' ? result.data.url : undefined;
+    const provider = (['clickup', 'jira', 'ambiguous'] as const).find((p) => p === result.adapter);
     this.issues.push({
       id: remoteId,
       number,
+      key: typeof result.data?.key === 'string' ? result.data.key : typeof result.data?.taskKey === 'string' ? result.data.taskKey : undefined,
       title: input.title,
       body: input.body,
       labels: input.labels,
@@ -100,6 +102,7 @@ export class RemoteIssueTrackerAdapter implements IssueTrackerAdapter {
       createdBy: 'repeat',
       state: 'open',
       url,
+      provider,
     });
 
     return { ...result, data: { ...(result.data ?? {}), id: remoteId, number, url } };

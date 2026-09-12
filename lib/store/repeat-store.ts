@@ -1227,13 +1227,16 @@ export const useRepeat = create<RepeatState>((set, get) => {
         const board = trackers.find((t) => t.provider === view);
         set((s) => {
           const mine = new Map(s.issues.filter((i) => i.createdBy === 'repeat').map((i) => [i.id, i]));
-          const issues = board
-            ? board.issues.map((i) => {
-                const created = mine.get(i.id);
-                return created ? { ...i, number: created.number, createdBy: 'repeat' as const } : i;
-              })
-            : s.issues;
-          return { surfaces: { trackers }, trackerView: view, issues: board ? issues : s.issues };
+          if (!board) return { surfaces: { trackers }, trackerView: view };
+          const listed = new Set(board.issues.map((i) => i.id));
+          const issues = board.issues.map((i) => {
+            const created = mine.get(i.id);
+            return created ? { ...i, number: created.number, createdBy: 'repeat' as const } : i;
+          });
+          // A ticket REPEAT just filed can lag behind the board's search index
+          // for a moment; keep it on screen until the board lists it.
+          const pending = [...mine.values()].filter((i) => !listed.has(i.id) && i.provider === board.provider);
+          return { surfaces: { trackers }, trackerView: view, issues: [...pending, ...issues] };
         });
       } catch {
         // The replica list stays; nothing to report.

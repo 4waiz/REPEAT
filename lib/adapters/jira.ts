@@ -99,6 +99,7 @@ export class JiraIssueTrackerAdapter implements IssueTrackerAdapter {
 
   private readonly config: JiraConfig;
   private usersCache: JiraUser[] | null = null;
+  private metaCache: { issueTypeId?: string; priorityIds: Record<string, string> } | null = null;
 
   constructor(config: JiraConfig) {
     this.config = config;
@@ -115,6 +116,45 @@ export class JiraIssueTrackerAdapter implements IssueTrackerAdapter {
         ...(init.headers ?? {}),
       },
     });
+  }
+
+  /** Proves the credentials and returns the token owner. */
+  async whoAmI(): Promise<{ accountId: string; displayName?: string; emailAddress?: string }> {
+    const response = await this.call('/rest/api/3/myself');
+    if (!response.ok) throw new Error(`Jira refused the credentials (${response.status})`);
+    return (await response.json()) as { accountId: string; displayName?: string; emailAddress?: string };
+  }
+
+  /**
+   * Issue-type and priority ids for this project, looked up once by name.
+   * Jira Cloud's own examples select by id; names are only informally
+   * accepted, so ids are sent whenever they can be resolved.
+   */
+  private async meta(): Promise<{ issueTypeId?: string; priorityIds: Record<string, string> }> {
+    if (this.metaCache) return this.metaCache;
+    const meta: { issueTypeId?: string; priorityIds: Record<string, string> } = { priorityIds: {} };
+    try {
+      const types = await this.call(
+        `/rest/api/3/issue/createmeta/${encodeURIComponent(this.config.projectKey)}/issuetypes?maxResults=50`,
+      );
+      if (types.ok) {
+        const data = (await types.json()) as { issueTypes?: { id: string; name: string; subtask?: boolean }[] };
+        const wanted = this.config.issueType.toLowerCase();
+        const match =
+          data.issueTypes?.find((t) => t.name.toLowerCase() === wanted) ??
+          data.issueTypes?.find((t) => !t.subtask && ['task', 'bug'].includes(t.name.toLowerCase()));
+        if (match) meta.issueTypeId = match.id;
+      }
+      const priorities = await this.call('/rest/api/3/priority/search?maxResults=50');
+      if (priorities.ok) {
+        const data = (await priorities.json()) as { values?: { id: string; name: string }[] };
+        for (const p of data.values ?? []) meta.priorityIds[p.name.toLowerCase()] = p.id;
+      }
+    } catch {
+      // Fall back to names below.
+    }
+    this.metaCache = meta;
+    return meta;
   }
 
   /** Users who can be assigned in the project, fetched once. */
@@ -181,17 +221,20 @@ export class JiraIssueTrackerAdapter implements IssueTrackerAdapter {
   async createIssue(input: CreateIssueInput): Promise<ActionResult> {
     const started = Date.now();
     try {
+      const meta = await this.meta();
+      const priorityName = PRIORITY[input.priority];
+      const priorityId = meta.priorityIds[priorityName.toLowerCase()];
       const response = await this.call('/rest/api/3/issue', {
         method: 'POST',
         body: JSON.stringify({
           fields: {
             project: { key: this.config.projectKey },
-            issuetype: { name: this.config.issueType },
+            issuetype: meta.issueTypeId ? { id: meta.issueTypeId } : { name: this.config.issueType },
             summary: input.title.slice(0, 255),
             description: toAdf(input.body),
             // Jira labels cannot contain spaces.
             labels: input.labels.map((l) => l.replace(/\s+/g, '-')),
-            priority: { name: PRIORITY[input.priority] },
+            priority: priorityId ? { id: priorityId } : { name: priorityName },
           },
         }),
       });
