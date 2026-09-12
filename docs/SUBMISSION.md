@@ -136,6 +136,9 @@ Tick these — each one is verifiable in the repo:
   live mode an OpenAI model is what reads the report. (If you also used Codex
   while building, that is a second honest reason.)
 - **AI Tinkerers** — tick if you count the event/platform as helpful (your call).
+- **Other products (not on the tick list):** **ClickUp** — the agent files the
+  real ticket there (`lib/adapters/clickup.ts`); **Google Gemini API** — an
+  optional direct model provider.
 
 Do **not** tick CopilotKit, Trigger.dev, Auth0, Mozilla.ai or Ambiguous AI —
 none of them are in the repo, and a false claim costs more than a missing tick.
@@ -143,7 +146,7 @@ none of them are in the repo, and a false claim costs more than a missing tick.
 - **Other Products** — paste:
 
 ```
-OpenRouter (live model understanding via chat completions with model routing; default openai/gpt-4.1-mini, fallback anthropic/claude-haiku-4.5), Exa (related-context research attached to the Ghost Run and ticket), Claude Code (build tooling), Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, React Flow (@xyflow/react), Zustand, Zod, Lucide, Chrome Extensions Manifest V3, GitHub REST API + Slack webhooks (optional live adapters). The judged demo also runs fully offline in Demo Mode with a deterministic classifier.
+OpenRouter (live model understanding via chat completions with model routing; default openai/gpt-4.1-mini, fallback anthropic/claude-haiku-4.5), Exa (related-context research attached to the Ghost Run and ticket), ClickUp API (the approved run creates and assigns a real task in the team's list), Google Gemini API (optional direct model provider via the OpenAI-compatible endpoint), Claude Code (build tooling), Next.js 15, React 19, TypeScript, Tailwind CSS, Framer Motion, React Flow (@xyflow/react), Zustand, Zod, Lucide, Chrome Extensions Manifest V3, GitHub REST API + Slack webhooks (optional live adapters). The judged demo also runs fully offline in Demo Mode with a deterministic classifier.
 ```
 
 ---

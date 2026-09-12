@@ -15,7 +15,9 @@ that the code does not actually call.
 | **Zustand** | [`lib/store/repeat-store.ts`](../lib/store/repeat-store.ts) | The live engine state. Every UI transition and the headless self-test go through the same pipeline. |
 | **Tailwind CSS · Framer Motion · React Flow (@xyflow/react) · Lucide** | `components/` | The interface: the Ghost Run, the Memory Map, the timeline, the orb. |
 | **Chrome Extensions Manifest V3** | [`extension/`](../extension) | The real observation layer — DOM interactions become semantic events posted to `/api/observe`, which re-validates and re-redacts everything. |
-| **GitHub REST API · Slack webhooks** | [`lib/adapters/github.ts`](../lib/adapters/github.ts), `POST /api/execute` | Optional live executors behind the same adapter interface the in-memory demo uses. |
+| **ClickUp** | [`lib/adapters/clickup.ts`](../lib/adapters/clickup.ts), [`lib/adapters/remote.ts`](../lib/adapters/remote.ts), `POST /api/execute` | The *ticketing* step, for real. After the one approval, the executor's "Create issue" and "Assign owner" steps create a task in a ClickUp list (title, markdown body with the Exa references, labels as tags, priority urgent/high/normal/low) and assign it by matching the owner's name against workspace members. The browser-side executor is unchanged; each consequential step goes to `/api/execute`, which derives the permission from the action and re-runs the policy guard. |
+| **Google Gemini API** (direct, optional) | [`lib/llm/openrouter.ts`](../lib/llm/openrouter.ts) | Same client, Google's OpenAI-compatible endpoint (`GEMINI_API_KEY`), used when no OpenRouter key is set. |
+| **GitHub REST API · Slack webhooks** | [`lib/adapters/github.ts`](../lib/adapters/github.ts), `POST /api/execute` | Optional live executors behind the same adapter interface; GitHub is used when ClickUp is not configured. |
 
 **Build tooling:** Claude Code (this codebase was built and integrated with it). The team also holds OpenAI Codex credits; those are Codex usage credits for the coding agent, not API credits, and the app does not call Codex.
 
@@ -65,6 +67,12 @@ enforced in `buildResearchQuery`, not promised in a paragraph.
 checks) reads the four fixtures through OpenRouter and Exa and asserts the
 classifications, literal evidence, the review path, the privacy rule, the
 graceful failure and the unchanged reroute.
+
+**The ticket is real.** With ClickUp configured, the third bug in the demo
+produced task `z8t8qgd17k` in the team's *Engineering & Delivery* list:
+model-written title and description, the three Exa references in the body,
+tags `bug, ui, frontend, mobile, navigation`, priority high, assigned — and
+the completion card links to it. Demo Mode still touches nothing.
 
 ## 3. How to advance this agent
 

@@ -189,7 +189,7 @@ Each stage is one module, and the boundaries are real:
 | Ghost Runner | [`lib/agents/ghost-runner.ts`](lib/agents/ghost-runner.ts) |
 | Policy | [`lib/policy/policy.ts`](lib/policy/policy.ts) |
 | Executor + Verifier | [`lib/agents/executor.ts`](lib/agents/executor.ts) |
-| Adapters | [`lib/adapters/`](lib/adapters) |
+| Adapters (in-memory, ClickUp, GitHub, Slack, remote) | [`lib/adapters/`](lib/adapters) |
 | Live engine state | [`lib/store/repeat-store.ts`](lib/store/repeat-store.ts) |
 
 ---
@@ -397,8 +397,13 @@ and set `DEMO_MODE=false`.
 |---|---|---|
 | Model understanding via **OpenRouter** | `OPENROUTER_API_KEY` (+ `OPENROUTER_MODEL`, default `openai/gpt-4.1-mini`) | When a learned trigger fires, REPEAT reads the new report with the model. Zod-validated; every cited piece of evidence must be a literal quote from the report or the whole answer is refused; the model may answer `unresolved`, which routes to human review; 8s timeout; falls back to the deterministic classifier on any failure |
 | Related context via **Exa** | `EXA_API_KEY` | In parallel with the model, REPEAT searches for public pages related to the symptom (docs, similar issues, status posts) and attaches up to three to the Ghost Run and the ticket body. Only the symptom phrase is sent — never the sender, their address or the message body; 6s timeout; a failure attaches nothing |
-| GitHub issues | `GITHUB_TOKEN`, `GITHUB_REPO` | real issues via `POST /api/execute` |
-| Slack | `SLACK_WEBHOOK_URL` | real messages |
+| Real tickets in **ClickUp** | `CLICKUP_API_KEY`, `CLICKUP_LIST_ID` (+ `CLICKUP_ASSIGNEES`) | After approval, the "Create issue" and "Assign owner" steps create and assign a real task in the list — title, markdown body with the Exa references, labels as tags, priority mapped to ClickUp's urgent/high/normal/low. The replica tracker mirrors it with a link; the team message carries the real URL |
+| GitHub issues | `GITHUB_TOKEN`, `GITHUB_REPO` | used when ClickUp is not configured |
+| Slack | `SLACK_WEBHOOK_URL` | real messages; without it the replica chat stays in charge, labelled as such |
+
+Model or Gemini direct: `OPENAI_API_KEY` or `GEMINI_API_KEY` work through the
+same client when `OPENROUTER_API_KEY` is empty (Gemini via Google's
+OpenAI-compatible endpoint).
 
 The two live passes run concurrently on the server (`POST /api/understand`)
 while the "Trigger detected" banner is up, and the run is re-planned from the
@@ -408,9 +413,13 @@ report and lists the references it found; the timeline records exactly what
 was sent to Exa. `POST /api/research` exposes the Exa step on its own.
 
 The agent, planner and executor are unchanged in either mode — only the
-understanding source and the adapter binding differ. `/api/execute` re-asserts
-the approval policy server-side rather than trusting the client, and returns
-`409` while Demo Mode is on.
+understanding source and the adapter binding differ. In live mode the
+browser-side executor sends each consequential step to `POST /api/execute`,
+one action per call, so its per-action guard, stop-on-failure and
+resume-not-restart semantics are intact; the server derives the permission
+class from the action itself, re-runs `assertExecutable`, refuses unapproved
+calls with `403`, and returns `409` while Demo Mode is on. `GET /api/execute`
+reports where a run would land, and the Ghost Run says so before you approve.
 
 There is no path where a model or search failure reaches the UI as an error.
 `npm run verify:live` proves it: it reads the four fixtures through the real
