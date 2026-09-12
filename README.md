@@ -318,6 +318,8 @@ Routing rules: `frontend → Noor`, `backend → Umar`, `ai-data → Awaiz`,
 Next.js 15 · React 19 · TypeScript (strict) · Tailwind CSS · Framer Motion ·
 React Flow · Zustand · Zod · Lucide. Live mode adds **OpenRouter** (model
 understanding) and **Exa** (related-context research), both optional.
+[`docs/STACK.md`](docs/STACK.md) says what each product does for the agent
+and how to take it further.
 
 Two deliberate choices worth noting:
 
