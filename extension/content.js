@@ -55,7 +55,7 @@ function pageIsExcluded() {
 function identifyApp() {
   const host = location.hostname;
   if (/mail\.google|outlook\.(office|live)|mail\./.test(host)) return 'mail';
-  if (/github\.com|gitlab\.com|atlassian\.net|linear\.app/.test(host)) return 'tracker';
+  if (/github\.com|gitlab\.com|atlassian\.net|linear\.app|clickup\.com/.test(host)) return 'tracker';
   if (/slack\.com|teams\.microsoft|discord\.com/.test(host)) return 'chat';
   if (host === 'localhost') return 'repeat';
   return 'unknown';
@@ -157,7 +157,44 @@ function buildEvent(action, intent, data) {
 }
 
 /* ------------------------------------------------------------------------ */
-/* 5. Listeners                                                             */
+/* 5. Site extractors                                                       */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * A site extractor knows one web app — Gmail, ClickUp, Jira — well enough to
+ * name the action precisely and attach the structured fields REPEAT's
+ * workflow variables are made of (subject, customer, title, labels,
+ * priority, owner). It is loaded after this file on matching origins (see
+ * manifest.json) and registers itself here.
+ *
+ *   handleClick(control, label) -> event | false | null
+ *     event: emit exactly this; false: ignore the click; null: fall back to
+ *     the generic verb table.
+ *   watch(api) -> void
+ *     set up observers for things that are not clicks: a message opened, a
+ *     ticket created.
+ */
+let site = null;
+
+const observerApi = {
+  buildEvent,
+  emit,
+  isSensitive,
+  accessibleLabel,
+  identifyApp,
+  registerSite(extractor) {
+    site = extractor;
+    try {
+      extractor.watch?.(observerApi);
+    } catch {
+      // A broken extractor must never break the page.
+    }
+  },
+};
+globalThis.REPEAT_OBSERVER = observerApi;
+
+/* ------------------------------------------------------------------------ */
+/* 6. Listeners                                                             */
 /* ------------------------------------------------------------------------ */
 
 if (!pageIsExcluded()) {
@@ -169,10 +206,26 @@ if (!pageIsExcluded()) {
     'click',
     (e) => {
       const target = e.target instanceof Element ? e.target : null;
-      const control = target?.closest('button, a, [role="button"], [type="submit"]');
+      const control = target?.closest('button, a, [role="button"], [type="submit"], [role="menuitem"], [role="option"]');
       if (!control || isSensitive(control)) return;
 
       const label = accessibleLabel(control);
+
+      // The site extractor gets first refusal.
+      if (site?.handleClick) {
+        let handled = null;
+        try {
+          handled = site.handleClick(control, label);
+        } catch {
+          handled = null;
+        }
+        if (handled === false) return;
+        if (handled) {
+          emit(handled);
+          return;
+        }
+      }
+
       const { action, intent } = inferAction(label, app);
       emit(buildEvent(action, intent, { control: label, controlKind: control.tagName.toLowerCase() }));
     },
