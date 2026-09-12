@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { CopilotShell } from '@/components/copilot/CopilotShell';
 
 export const metadata: Metadata = {
   title: 'REPEAT — Show it once. Never do it again.',
@@ -18,7 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen">
-        <div className="relative z-10">{children}</div>
+        {/* Live mode only: the AG-UI transport for the Ghost Run. A pass-through in Demo Mode. */}
+        <CopilotShell>
+          <div className="relative z-10">{children}</div>
+        </CopilotShell>
       </body>
     </html>
   );

@@ -24,7 +24,7 @@ import { compilePattern } from '@/lib/patterns/compiler';
 import { understandDeterministic } from '@/lib/agents/understanding';
 import { requestUnderstanding } from '@/lib/agents/understand-client';
 import { providerLabel } from '@/lib/llm/openrouter';
-import type { LiveUnderstanding } from '@/lib/agents/understanding-live';
+import type { LiveUnderstanding, UnderstandingProvenance } from '@/lib/agents/understanding-live';
 import { planRun, applyOwnerOverride } from '@/lib/agents/ghost-runner';
 import { executeRun, verifyRun } from '@/lib/agents/executor';
 import { DemoIssueTrackerAdapter, DemoMessagingAdapter, type FailurePoint } from '@/lib/adapters/demo';
@@ -79,6 +79,27 @@ export type LiveTargets = {
   tracker: { name: string; live: boolean; target: string } | null;
   messaging: { name: string; live: boolean; target: string } | null;
 };
+
+/**
+ * A planner that can replace the REST live pass: given the report, the
+ * pattern and the next issue number, it returns a fully planned run plus
+ * the provenance of the understanding behind it — or null to fall back.
+ * The CopilotKit bridge registers one that streams the plan over AG-UI.
+ */
+export type LivePlanner = (input: {
+  message: MailMessage;
+  pattern: LearnedPattern;
+  issueNumber: number;
+  /** Progress callback: how many proposed actions have arrived so far. */
+  onProgress?: (count: number) => void;
+}) => Promise<{ run: AgentRun; provenance: UnderstandingProvenance; transport: string } | null>;
+
+let livePlanner: LivePlanner | null = null;
+
+/** Register (or clear) the streaming planner. Only the live bridge calls this. */
+export function setLivePlanner(planner: LivePlanner | null) {
+  livePlanner = planner;
+}
 
 type Settings = {
   soundOn: boolean;
@@ -271,10 +292,32 @@ export const useRepeat = create<RepeatState>((set, get) => {
    * stands, and the timeline says why.
    */
   const prepareGhostRun = async (run: AgentRun, message: MailMessage, pattern: LearnedPattern) => {
-    const [live] = await Promise.all([
-      DEMO_MODE ? Promise.resolve<LiveUnderstanding | null>(null) : requestUnderstanding(message),
-      sleep(TIMING.triggerToGhost),
-    ]);
+    // Live, in order of preference: the streaming planner (the Ghost Run
+    // arrives action by action over AG-UI), then the REST pass, then the
+    // deterministic plan that is already on screen.
+    const plan = async (): Promise<
+      { understanding: IssueUnderstanding; provenance: UnderstandingProvenance; run?: AgentRun; transport?: string } | null
+    > => {
+      if (DEMO_MODE) return null;
+      const issueNumber = get().nextIssueNumber;
+      const total = run.proposedActions.length;
+      const streamed = livePlanner
+        ? await livePlanner({
+            message,
+            pattern,
+            issueNumber,
+            onProgress: (count) =>
+              set({ banner: { kind: 'trigger', text: `New bug report received. Planning · ${count} of ${total} steps` } }),
+          }).catch(() => null)
+        : null;
+      if (streamed) {
+        return { understanding: streamed.run.understanding, provenance: streamed.provenance, run: streamed.run, transport: streamed.transport };
+      }
+      const rest: LiveUnderstanding | null = await requestUnderstanding(message);
+      return rest ? { understanding: rest.understanding, provenance: rest.provenance } : null;
+    };
+
+    const [live] = await Promise.all([plan(), sleep(TIMING.triggerToGhost)]);
 
     // The run may have been cancelled, executed or replaced while we waited.
     const current = get();
@@ -284,11 +327,26 @@ export const useRepeat = create<RepeatState>((set, get) => {
 
     if (live) {
       const { understanding, provenance } = live;
-      const replanned = planRun(pattern, message, understanding, current.nextIssueNumber);
+      // A streamed run was planned by the same planner on the server; its
+      // action ids are re-issued locally so React keys stay unique here.
+      const replanned = live.run
+        ? { ...live.run, proposedActions: live.run.proposedActions.map((a) => ({ ...a, id: makeId('act') })) }
+        : planRun(pattern, message, understanding, current.nextIssueNumber);
       set({
         understanding,
         activeRun: { ...replanned, id: run.id, startedAt: run.startedAt },
+        banner: { kind: 'trigger', text: 'New bug report received.' },
       });
+
+      if (live.transport) {
+        pushTimeline({
+          label: `Ghost Run streamed via ${live.transport}`,
+          detail: `${replanned.proposedActions.length} proposed actions arrived as generative UI · no prompt was typed`,
+          origin: 'executed',
+          status: 'done',
+          app: 'repeat',
+        });
+      }
 
       pushTimeline({
         label: provenance.usedLlm ? `Report read by ${provenance.model}` : 'Report read by the deterministic classifier',
