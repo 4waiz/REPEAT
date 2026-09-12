@@ -206,6 +206,8 @@ export function startExtensionFeed(
         cursor = data.seq;
         return;
       }
+      // The server started over (its sequence is behind us): resync.
+      if (data.seq < cursor) cursor = data.seq - data.events.length;
       for (const event of data.events) {
         cursor = Math.max(cursor, event.seq);
         const key = `${event.action}|${JSON.stringify(event.structuredData ?? {})}`;

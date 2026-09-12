@@ -54,7 +54,9 @@ const BUFFER_LIMIT = 500;
 type StoredEvent = z.infer<typeof EventSchema> & { seq: number };
 
 const buffer: StoredEvent[] = [];
-let nextSeq = 1;
+// Time-based so a dev-server reload or restart never hands out a sequence
+// number a poller has already passed; events are lost, never skipped.
+let nextSeq = Date.now();
 
 function scrub(event: z.infer<typeof EventSchema>): z.infer<typeof EventSchema> {
   const data = event.structuredData ?? {};
