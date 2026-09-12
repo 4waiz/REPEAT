@@ -23,14 +23,16 @@ export function MailWindow() {
   const guideOn = useRepeat((s) => s.settings.guideOn);
   const next = useRepeat(selectNextAction);
 
+  const mailSurface = useRepeat((s) => s.mailSurface);
+
   const selected = inbox.find((m) => m.id === selectedId) ?? null;
   const unread = inbox.filter((m) => !m.read).length;
   const firstBug = inbox.find((m) => m.fixtureRef !== 'noise' && !m.read);
 
   return (
     <WindowFrame
-      title="Mail"
-      subtitle="Inbox"
+      title={mailSurface ? 'Gmail' : 'Mail'}
+      subtitle={mailSurface ? `${mailSurface.address} · live` : 'Inbox'}
       icon={<Mail />}
       accent="#38dcff"
       observed

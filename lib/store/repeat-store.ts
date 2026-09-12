@@ -55,6 +55,9 @@ import { playCue } from '@/lib/sound/cues';
  * There is no second, "demo-only" code path.
  */
 
+/** How often the connected inbox is re-read in live mode. */
+const MAIL_POLL_MS = 20_000;
+
 /** The clicks a human actually makes, in order. Drives the guide affordance. */
 export const OBSERVABLE_SEQUENCE: SemanticAction[] = [
   'mail.read_message',
@@ -160,6 +163,8 @@ export type RepeatState = {
   live: LiveTargets | null;
   /** The real boards (ClickUp, Jira) read in live mode; null in Demo Mode. */
   surfaces: { trackers: TrackerSurface[] } | null;
+  /** The connected inbox in live mode; null when the replica inbox is in use. */
+  mailSurface: { provider: 'gmail'; address: string } | null;
   /** Which real board the tracker window shows when more than one is configured. */
   trackerView: TrackerSurface['provider'] | null;
 
@@ -191,6 +196,8 @@ export type RepeatState = {
   // ---- runs ------------------------------------------------------------
   deliverNextBug: () => void;
   deliverBug: (index: number) => void;
+  /** A message arrived (fixture or real). Triggers a run when a pattern is active. */
+  deliverMessage: (message: MailMessage) => void;
   openGhostRun: () => void;
   approveAndExecute: () => Promise<void>;
   cancelRun: () => void;
@@ -269,6 +276,59 @@ export const useRepeat = create<RepeatState>((set, get) => {
 
   const cue = (name: Parameters<typeof playCue>[0]) => {
     if (get().settings.soundOn) playCue(name);
+  };
+
+  /**
+   * Live mode: the Mail window is the connected Gmail inbox. The first load
+   * replaces the replica inbox; later polls add what is new, and a new,
+   * unread support report fires the trigger — a real email starts the run.
+   */
+  const loadMail = async (first: boolean) => {
+    try {
+      const response = await fetch('/api/surfaces/mail');
+      if (!response.ok) return;
+      const data = (await response.json()) as {
+        provider: 'gmail' | null;
+        address: string | null;
+        messages: MailMessage[];
+      };
+      if (!data.provider || !data.address) return;
+
+      const state = get();
+      if (first || !state.mailSurface) {
+        set({ mailSurface: { provider: data.provider, address: data.address }, inbox: data.messages });
+        pushTimeline({
+          label: `Inbox connected: ${data.address}`,
+          detail: `${data.messages.length} recent messages · new support reports will trigger the workflow`,
+          origin: 'system',
+          status: 'done',
+          app: 'mail',
+        });
+        return;
+      }
+
+      const known = new Set(state.inbox.map((m) => m.id));
+      const fresh = data.messages.filter((m) => !known.has(m.id));
+      for (const message of fresh.reverse()) {
+        const looksLikeReport = understandDeterministic(message).area !== 'unresolved';
+        // Only an unread report can fire the trigger; anything else just
+        // lands in the inbox like it would in Gmail.
+        if (!message.read && looksLikeReport && !get().activeRun) {
+          get().deliverMessage({ ...message, isNew: true });
+        } else {
+          get().receiveMail(message);
+          pushTimeline({
+            label: looksLikeReport ? 'New support email' : 'New email',
+            detail: message.subject,
+            origin: 'system',
+            status: 'done',
+            app: 'mail',
+          });
+        }
+      }
+    } catch {
+      // The inbox is unreachable; keep what we have.
+    }
   };
 
   const loadLiveTargets = async () => {
@@ -460,6 +520,7 @@ export const useRepeat = create<RepeatState>((set, get) => {
     deliveredCount: 1,
     live: null,
     surfaces: null,
+    mailSurface: null,
     trackerView: null,
 
     /* ------------------------------------------------------------------ */
@@ -492,6 +553,8 @@ export const useRepeat = create<RepeatState>((set, get) => {
       // listening to the Chrome extension. Demo Mode never makes a request.
       if (!DEMO_MODE) {
         void loadLiveTargets();
+        void loadMail(true);
+        setInterval(() => void loadMail(false), MAIL_POLL_MS);
         startExtensionFeed(
           { getState: get },
           (event, summary) => {
@@ -861,17 +924,15 @@ export const useRepeat = create<RepeatState>((set, get) => {
       if (!fixture) return;
       const state = get();
       if (state.inbox.some((m) => m.id === fixture.id)) return;
+      set({ deliveredCount: Math.max(state.deliveredCount, index + 1) });
+      get().deliverMessage({ ...fixture, receivedAt: new Date().toISOString(), read: false, isNew: true });
+    },
 
-      const message: MailMessage = {
-        ...fixture,
-        receivedAt: new Date().toISOString(),
-        read: false,
-        isNew: true,
-      };
-      set({
-        inbox: [message, ...state.inbox],
-        deliveredCount: Math.max(state.deliveredCount, index + 1),
-      });
+    deliverMessage: (message) => {
+      const state = get();
+      if (!state.inbox.some((m) => m.id === message.id)) {
+        set({ inbox: [message, ...state.inbox] });
+      }
       cue('mail');
 
       const activePattern = state.patterns.find((p) => p.status === 'active');
